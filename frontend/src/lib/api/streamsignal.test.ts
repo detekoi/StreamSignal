@@ -9,13 +9,13 @@ vi.mock('../../../wailsjs/go/main/App', () => ({
     GeneratePreview: vi.fn(),
     GetDiagnostics: vi.fn(),
     GetLogs: vi.fn(),
-    GetOverview: vi.fn(),
     GetSettings: vi.fn(),
     GoLive: vi.fn(),
     ListPendingLiveNowSessions: vi.fn(),
     ListDestinations: vi.fn(),
     SaveDestination: vi.fn(),
     SaveSettings: vi.fn(),
+    TestDestinationConnection: vi.fn(),
 }));
 
 import * as bindings from '../../../wailsjs/go/main/App';
@@ -28,13 +28,13 @@ import {
     generatePreview,
     getDiagnostics,
     getLogs,
-    getOverview,
     getSettings,
     goLive,
     listDestinations,
     listPendingLiveNowSessions,
     saveDestination,
     saveSettings,
+    testDestinationConnection,
 } from './streamsignal';
 
 describe('streamsignal api wrappers', () => {
@@ -50,6 +50,7 @@ describe('streamsignal api wrappers', () => {
             message: 'See you there',
             hashtags: '#vtuber',
         };
+        const destinationIDs = ['discord-main'];
         const destination = {
             id: 'discord-main',
             platform: 'discord',
@@ -75,29 +76,87 @@ describe('streamsignal api wrappers', () => {
             endStreamTemplate: '',
         };
 
-        vi.mocked(bindings.GetOverview).mockResolvedValue({ productName: 'StreamSignal' } as never);
         vi.mocked(bindings.GetLogs).mockResolvedValue([] as never);
         vi.mocked(bindings.GetDiagnostics).mockResolvedValue('diag' as never);
         vi.mocked(bindings.GeneratePreview).mockResolvedValue([] as never);
-        vi.mocked(bindings.DryRun).mockResolvedValue({ mode: 'dry_run' } as never);
-        vi.mocked(bindings.GoLive).mockResolvedValue({ mode: 'go_live' } as never);
-        vi.mocked(bindings.ForceGoLive).mockResolvedValue({ mode: 'go_live' } as never);
-        vi.mocked(bindings.EndStream).mockResolvedValue({ mode: 'end_stream' } as never);
+        vi.mocked(bindings.DryRun).mockResolvedValue({
+            mode: 'dry_run',
+            status: 'SUCCESS',
+            testModeActive: false,
+            results: [],
+            totalCount: 0,
+            successCount: 0,
+            failedCount: 0,
+            skippedCount: 0,
+            validationErrorCount: 0,
+            requiresDuplicateConfirmation: false,
+            duplicateWarningMessage: '',
+        } as never);
+        vi.mocked(bindings.GoLive).mockResolvedValue({
+            mode: 'go_live',
+            status: 'SUCCESS',
+            testModeActive: false,
+            results: [],
+            totalCount: 0,
+            successCount: 0,
+            failedCount: 0,
+            skippedCount: 0,
+            validationErrorCount: 0,
+            requiresDuplicateConfirmation: false,
+            duplicateWarningMessage: '',
+        } as never);
+        vi.mocked(bindings.ForceGoLive).mockResolvedValue({
+            mode: 'go_live',
+            status: 'SUCCESS',
+            testModeActive: false,
+            results: [],
+            totalCount: 0,
+            successCount: 0,
+            failedCount: 0,
+            skippedCount: 0,
+            validationErrorCount: 0,
+            requiresDuplicateConfirmation: false,
+            duplicateWarningMessage: '',
+        } as never);
+        vi.mocked(bindings.EndStream).mockResolvedValue({
+            mode: 'end_stream',
+            status: 'SUCCESS',
+            testModeActive: false,
+            results: [],
+            totalCount: 0,
+            successCount: 0,
+            failedCount: 0,
+            skippedCount: 0,
+            validationErrorCount: 0,
+            requiresDuplicateConfirmation: false,
+            duplicateWarningMessage: '',
+        } as never);
         vi.mocked(bindings.ListPendingLiveNowSessions).mockResolvedValue([] as never);
-        vi.mocked(bindings.ClearPendingLiveNowSession).mockResolvedValue({} as never);
+        vi.mocked(bindings.ClearPendingLiveNowSession).mockResolvedValue({
+            destinationID: 'bluesky-main',
+            destinationName: 'Main Bluesky',
+            platform: 'bluesky',
+            state: 'SUCCESS',
+            message: 'Recovered and cleared pending Live Now session.',
+            content: '',
+        } as never);
         vi.mocked(bindings.ListDestinations).mockResolvedValue([] as never);
         vi.mocked(bindings.SaveDestination).mockResolvedValue(destination as never);
         vi.mocked(bindings.DeleteDestination).mockResolvedValue(undefined as never);
         vi.mocked(bindings.GetSettings).mockResolvedValue(settings as never);
         vi.mocked(bindings.SaveSettings).mockResolvedValue(settings as never);
+        vi.mocked(bindings.TestDestinationConnection).mockResolvedValue({
+            platform: 'discord',
+            state: 'SUCCESS',
+            message: 'Connection verified.',
+        } as never);
 
-        await getOverview();
         await getLogs();
         await getDiagnostics();
-        await generatePreview(announcement);
-        await dryRun(announcement);
-        await goLive(announcement);
-        await forceGoLive(announcement);
+        await generatePreview(announcement, destinationIDs);
+        await dryRun(announcement, destinationIDs);
+        await goLive(announcement, destinationIDs);
+        await forceGoLive(announcement, destinationIDs);
         await endStream();
         await listPendingLiveNowSessions();
         await clearPendingLiveNowSession('bluesky-main');
@@ -106,21 +165,22 @@ describe('streamsignal api wrappers', () => {
         await deleteDestination('discord-main');
         await getSettings();
         await saveSettings(settings);
+        await testDestinationConnection(destination);
 
-        expect(bindings.GetOverview).toHaveBeenCalled();
         expect(bindings.GetLogs).toHaveBeenCalled();
         expect(bindings.GetDiagnostics).toHaveBeenCalled();
-        expect(bindings.GeneratePreview).toHaveBeenCalledWith(announcement);
-        expect(bindings.DryRun).toHaveBeenCalledWith(announcement);
-        expect(bindings.GoLive).toHaveBeenCalledWith(announcement);
-        expect(bindings.ForceGoLive).toHaveBeenCalledWith(announcement);
+        expect(bindings.GeneratePreview).toHaveBeenCalledWith(expect.objectContaining({ ...announcement, destinationIDs }));
+        expect(bindings.DryRun).toHaveBeenCalledWith(expect.objectContaining({ ...announcement, destinationIDs }));
+        expect(bindings.GoLive).toHaveBeenCalledWith(expect.objectContaining({ ...announcement, destinationIDs }));
+        expect(bindings.ForceGoLive).toHaveBeenCalledWith(expect.objectContaining({ ...announcement, destinationIDs }));
         expect(bindings.EndStream).toHaveBeenCalled();
         expect(bindings.ListPendingLiveNowSessions).toHaveBeenCalled();
         expect(bindings.ClearPendingLiveNowSession).toHaveBeenCalledWith('bluesky-main');
         expect(bindings.ListDestinations).toHaveBeenCalled();
-        expect(bindings.SaveDestination).toHaveBeenCalledWith(destination);
+        expect(bindings.SaveDestination).toHaveBeenCalledWith(expect.objectContaining(destination));
         expect(bindings.DeleteDestination).toHaveBeenCalledWith('discord-main');
         expect(bindings.GetSettings).toHaveBeenCalled();
-        expect(bindings.SaveSettings).toHaveBeenCalledWith(settings);
+        expect(bindings.SaveSettings).toHaveBeenCalledWith(expect.objectContaining(settings));
+        expect(bindings.TestDestinationConnection).toHaveBeenCalledWith(expect.objectContaining(destination));
     });
 });

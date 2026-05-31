@@ -65,3 +65,37 @@ func TestPublisherReturnsErrorForInvalidURL(t *testing.T) {
 		t.Fatal("expected publish error")
 	}
 }
+
+func TestPublisherVerifiesWebhook(t *testing.T) {
+	var gotMethod string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	publisher := NewPublisher(server.Client())
+
+	if err := publisher.VerifyWebhook(context.Background(), server.URL); err != nil {
+		t.Fatalf("verify webhook: %v", err)
+	}
+
+	if gotMethod != http.MethodGet {
+		t.Fatalf("expected GET, got %s", gotMethod)
+	}
+}
+
+func TestPublisherVerifyWebhookReturnsErrorForNonSuccessResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "missing webhook", http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	publisher := NewPublisher(server.Client())
+
+	err := publisher.VerifyWebhook(context.Background(), server.URL)
+	if err == nil {
+		t.Fatal("expected verify error")
+	}
+}

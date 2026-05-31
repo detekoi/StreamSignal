@@ -176,6 +176,36 @@ func TestAppGeneratePreviewAndDiagnostics(t *testing.T) {
 	}
 }
 
+func TestAppTestDestinationConnectionReturnsValidationResult(t *testing.T) {
+	app := newTestApp(t)
+
+	result := app.TestDestinationConnection(domain.Destination{
+		Name:       "Main Discord",
+		Platform:   domain.PlatformDiscord,
+		ConfigJSON: `{"webhookKey":"bad-url"}`,
+	})
+
+	if result.State != "VALIDATION_ERROR" {
+		t.Fatalf("expected validation error, got %+v", result)
+	}
+
+	logs, err := app.GetLogs()
+	if err != nil {
+		t.Fatalf("get logs: %v", err)
+	}
+
+	found := false
+	for _, entry := range logs {
+		if entry.Action == "test_destination_connection" && entry.Status == "VALIDATION_ERROR" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected test_destination_connection log entry, got %+v", logs)
+	}
+}
+
 func TestAppDryRunDelegatesAndLogs(t *testing.T) {
 	app := newTestApp(t)
 
@@ -306,8 +336,21 @@ func TestAppRecoveryBindingsReturnErrorsForMissingSessions(t *testing.T) {
 func TestAppRecoveryBindingsSurfaceSeededSession(t *testing.T) {
 	app := newTestApp(t)
 
+	destinationRepo := sqlite.NewDestinationRepository(app.db)
+	err := destinationRepo.Save(context.Background(), domain.Destination{
+		ID:         "bluesky-main",
+		Platform:   domain.PlatformBluesky,
+		Name:       "Main Bluesky",
+		Enabled:    true,
+		Template:   "{{stream_title}}",
+		ConfigJSON: `{"accountIdentifier":"don.main","credentialKey":"bluesky/main"}`,
+	})
+	if err != nil {
+		t.Fatalf("seed destination: %v", err)
+	}
+
 	repository := sqlite.NewLiveNowSessionRepository(app.db)
-	err := repository.Upsert(context.Background(), domain.ActiveLiveNowSession{
+	err = repository.Upsert(context.Background(), domain.ActiveLiveNowSession{
 		DestinationID:     "bluesky-main",
 		DestinationName:   "Main Bluesky",
 		Platform:          string(domain.PlatformBluesky),

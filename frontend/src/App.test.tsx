@@ -15,7 +15,6 @@ vi.mock('./lib/api/streamsignal', () => ({
     forceGoLive: vi.fn(),
     getDiagnostics: vi.fn(),
     getLogs: vi.fn(),
-    getOverview: vi.fn(),
     getSettings: vi.fn(),
     generatePreview: vi.fn(),
     goLive: vi.fn(),
@@ -23,6 +22,7 @@ vi.mock('./lib/api/streamsignal', () => ({
     listDestinations: vi.fn(),
     saveDestination: vi.fn(),
     saveSettings: vi.fn(),
+    testDestinationConnection: vi.fn(),
 }));
 
 const mockedClearPendingLiveNowSession = vi.mocked(api.clearPendingLiveNowSession);
@@ -32,7 +32,6 @@ const mockedEndStream = vi.mocked(api.endStream);
 const mockedForceGoLive = vi.mocked(api.forceGoLive);
 const mockedGetDiagnostics = vi.mocked(api.getDiagnostics);
 const mockedGetLogs = vi.mocked(api.getLogs);
-const mockedGetOverview = vi.mocked(api.getOverview);
 const mockedGetSettings = vi.mocked(api.getSettings);
 const mockedGeneratePreview = vi.mocked(api.generatePreview);
 const mockedGoLive = vi.mocked(api.goLive);
@@ -40,6 +39,7 @@ const mockedListPendingLiveNowSessions = vi.mocked(api.listPendingLiveNowSession
 const mockedListDestinations = vi.mocked(api.listDestinations);
 const mockedSaveDestination = vi.mocked(api.saveDestination);
 const mockedSaveSettings = vi.mocked(api.saveSettings);
+const mockedTestDestinationConnection = vi.mocked(api.testDestinationConnection);
 
 function emptyExecutionSummary(mode: 'dry_run' | 'go_live' | 'end_stream') {
     return {
@@ -71,19 +71,6 @@ function deferred<T>() {
 
 describe('App', () => {
     beforeEach(() => {
-        mockedGetOverview.mockResolvedValue({
-            productName: 'StreamSignal',
-            tagline: 'Send the signal. Go live everywhere.',
-            currentPhase: 'Milestone 2',
-            frontendStack: 'React + TypeScript via Wails',
-            backendStack: 'Go',
-            dataStack: 'SQLite + WinCred',
-            highlights: ['Go-first'],
-            milestones: [],
-            architecture: [],
-            nextActions: ['Preview UI'],
-            acceptanceBars: ['No network calls in preview'],
-        });
         mockedGetSettings.mockResolvedValue({
             testModeEnabled: false,
             testDiscordWebhookKey: '',
@@ -120,6 +107,11 @@ describe('App', () => {
             id: destination.id || 'generated-id',
         }));
         mockedSaveSettings.mockImplementation(async (settings) => settings);
+        mockedTestDestinationConnection.mockResolvedValue({
+            platform: 'discord',
+            state: 'SUCCESS',
+            message: 'Discord webhook verified successfully.',
+        });
         mockedDeleteDestination.mockResolvedValue();
     });
 
@@ -152,13 +144,16 @@ describe('App', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Generate Preview' }));
 
         await waitFor(() => {
-            expect(mockedGeneratePreview).toHaveBeenCalledWith({
-                streamTitle: 'Going Live',
-                streamURL: 'https://example.com/live',
-                category: '',
-                message: '',
-                hashtags: '',
-            });
+            expect(mockedGeneratePreview).toHaveBeenCalledWith(
+                {
+                    streamTitle: 'Going Live',
+                    streamURL: 'https://example.com/live',
+                    category: '',
+                    message: '',
+                    hashtags: '',
+                },
+                [],
+            );
         });
 
         expect(await screen.findByText('Main Discord')).toBeInTheDocument();
@@ -255,14 +250,13 @@ describe('App', () => {
         expect(screen.getByText('No previews yet')).toBeInTheDocument();
     });
 
-    it('keeps the Home workflow available when overview loading fails', async () => {
-        mockedGetOverview.mockRejectedValue(new Error('Overview unavailable.'));
-
+    it('shows the compact app header on the Home tab', async () => {
         render(<App />);
 
-        expect(await screen.findByText('Overview unavailable.')).toBeInTheDocument();
+        expect(await screen.findByText('StreamSignal')).toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'Generate Preview' })).toBeInTheDocument();
         expect(screen.getByText('No previews yet')).toBeInTheDocument();
+        expect(screen.getByText('Add at least one destination first, then generate a preview to see per-destination content.')).toBeInTheDocument();
     });
 
     it('loads destination items into the Destinations tab', async () => {
@@ -285,6 +279,50 @@ describe('App', () => {
 
         expect(await screen.findByText('Main Discord')).toBeInTheDocument();
         expect(screen.getByText('discord')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'New Destination' })).toBeInTheDocument();
+    });
+
+    it('uses the Home tab destination selection for preview generation', async () => {
+        mockedListDestinations.mockResolvedValue([
+            {
+                id: 'discord-main',
+                platform: 'discord',
+                name: 'Main Discord',
+                enabled: true,
+                template: '{{stream_title}}',
+                configJSON: '{"webhookKey":"discord/main"}',
+                createdAt: '',
+                updatedAt: '',
+            },
+            {
+                id: 'bluesky-main',
+                platform: 'bluesky',
+                name: 'Main Bluesky',
+                enabled: true,
+                template: '{{stream_title}}',
+                configJSON: '{"accountIdentifier":"don.test","credentialKey":"bluesky/main"}',
+                createdAt: '',
+                updatedAt: '',
+            },
+        ]);
+
+        render(<App />);
+
+        fireEvent.click(await screen.findByLabelText('Main Bluesky'));
+        fireEvent.click(screen.getByRole('button', { name: 'Generate Preview' }));
+
+        await waitFor(() => {
+            expect(mockedGeneratePreview).toHaveBeenCalledWith(
+                {
+                    streamTitle: '',
+                    streamURL: '',
+                    category: '',
+                    message: '',
+                    hashtags: '',
+                },
+                ['discord-main'],
+            );
+        });
     });
 
     it('hydrates platform-specific destination fields from config json', async () => {
@@ -308,7 +346,7 @@ describe('App', () => {
 
         expect(await screen.findByLabelText('Server Name')).toHaveValue('My Server');
         expect(screen.getByLabelText('Channel Name')).toHaveValue('go-live');
-        expect(screen.getByLabelText('Webhook Key')).toHaveValue(STORED_SECRET_TOKEN);
+        expect(screen.getByLabelText('Webhook URL')).toHaveValue(STORED_SECRET_TOKEN);
     });
 
     it('saves a destination from the Destinations tab form', async () => {
@@ -328,7 +366,7 @@ describe('App', () => {
         fireEvent.change(screen.getByLabelText('Channel Name'), {
             target: { value: 'go-live' },
         });
-        fireEvent.change(screen.getByLabelText('Webhook Key'), {
+        fireEvent.change(screen.getByLabelText('Webhook URL'), {
             target: { value: 'discord/main' },
         });
 
@@ -348,6 +386,119 @@ describe('App', () => {
         });
 
         expect(await screen.findByText('Destination saved.')).toBeInTheDocument();
+    });
+
+    it('tests a discord destination connection before saving', async () => {
+        render(<App />);
+
+        fireEvent.click(await screen.findByRole('button', { name: 'Destinations' }));
+
+        expect(screen.getByText(/Only fields referenced in this template will appear/i)).toBeInTheDocument();
+
+        fireEvent.change(screen.getByLabelText('Friendly Name'), {
+            target: { value: 'Main Discord' },
+        });
+        fireEvent.change(screen.getByLabelText('Template'), {
+            target: { value: '{{stream_title}}' },
+        });
+        fireEvent.change(screen.getByLabelText('Webhook URL'), {
+            target: { value: 'https://discord.com/api/webhooks/test' },
+        });
+
+        fireEvent.click(screen.getByRole('button', { name: 'Test Discord webhook' }));
+
+        await waitFor(() => {
+            expect(mockedTestDestinationConnection).toHaveBeenCalledWith({
+                id: '',
+                platform: 'discord',
+                name: 'Main Discord',
+                enabled: true,
+                template: '{{stream_title}}',
+                configJSON: '{"serverName":"","channelName":"","webhookKey":"https://discord.com/api/webhooks/test"}',
+                createdAt: '',
+                updatedAt: '',
+            });
+        });
+
+        expect(await screen.findByText('Discord webhook verified successfully.')).toBeInTheDocument();
+    });
+
+    it('shows which announcement fields a destination template uses and can reset to the starter template', async () => {
+        render(<App />);
+
+        fireEvent.click(await screen.findByRole('button', { name: 'Destinations' }));
+
+        expect(await screen.findByText('Uses: title, stream URL, message, hashtags')).toBeInTheDocument();
+
+        fireEvent.change(screen.getByLabelText('Template'), {
+            target: { value: '{{stream_title}}' },
+        });
+
+        expect(await screen.findByText('Uses: title')).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Reset to Starter Template' }));
+
+        expect(screen.getByLabelText('Template')).toHaveValue('{{stream_title}}\n{{stream_url}}\n{{message}}\n{{hashtags}}');
+        expect(screen.getByText('Uses: title, stream URL, message, hashtags')).toBeInTheDocument();
+    });
+
+    it('opens guided setup in a modal instead of leaving it expanded on the page', async () => {
+        render(<App />);
+
+        fireEvent.click(await screen.findByRole('button', { name: 'Destinations' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Setup Help' }));
+
+        expect(await screen.findByRole('dialog', { name: 'Guided Credential Setup' })).toBeInTheDocument();
+        expect(screen.getByText('Step 1: Create a channel webhook')).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+
+        await waitFor(() => {
+            expect(screen.queryByRole('dialog', { name: 'Guided Credential Setup' })).not.toBeInTheDocument();
+        });
+    });
+
+    it('copies template variables from the destination helper', async () => {
+        const writeText = vi.fn().mockResolvedValue(undefined);
+        Object.assign(navigator, {
+            clipboard: {
+                writeText,
+            },
+        });
+
+        render(<App />);
+
+        fireEvent.click(await screen.findByRole('button', { name: 'Destinations' }));
+        fireEvent.click(screen.getByRole('button', { name: '{{stream_url}}' }));
+
+        await waitFor(() => {
+            expect(writeText).toHaveBeenCalledWith('{{stream_url}}');
+        });
+
+        expect(await screen.findByText('Copied {{stream_url}}')).toBeInTheDocument();
+    });
+
+    it('shows validation feedback when destination connection testing fails', async () => {
+        mockedTestDestinationConnection.mockResolvedValue({
+            platform: 'bluesky',
+            state: 'VALIDATION_ERROR',
+            message: 'Bluesky account identifier is required.',
+        });
+
+        render(<App />);
+
+        fireEvent.click(await screen.findByRole('button', { name: 'Destinations' }));
+        fireEvent.change(await screen.findByLabelText('Platform'), {
+            target: { value: 'bluesky' },
+        });
+
+        fireEvent.click(screen.getByRole('button', { name: 'Setup Help' }));
+        expect(await screen.findByText('Step 1: Create an app password')).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+
+        fireEvent.click(screen.getByRole('button', { name: 'Test Bluesky app password' }));
+
+        expect(await screen.findByText('Bluesky account identifier is required.')).toBeInTheDocument();
     });
 
     it('loads and saves settings from the Settings tab', async () => {
@@ -371,10 +522,10 @@ describe('App', () => {
         fireEvent.click(await screen.findByRole('button', { name: 'Settings' }));
 
         expect(await screen.findByLabelText('Default Stream URL')).toHaveValue('https://example.com/live');
-        expect(screen.getByLabelText('Test Discord Webhook Key')).toHaveValue(STORED_SECRET_TOKEN);
+        expect(screen.getByLabelText('Test Discord Webhook URL')).toHaveValue(STORED_SECRET_TOKEN);
         expect(screen.getByLabelText('Test Bluesky Account Identifier')).toHaveValue('don.test');
-        expect(screen.getByLabelText('Test Bluesky Credential Key')).toHaveValue(STORED_SECRET_TOKEN);
-        expect(screen.getByLabelText('Test Mastodon Credential Key')).toHaveValue(STORED_SECRET_TOKEN);
+        expect(screen.getByLabelText('Test Bluesky App Password')).toHaveValue(STORED_SECRET_TOKEN);
+        expect(screen.getByLabelText('Test Mastodon Access Token')).toHaveValue(STORED_SECRET_TOKEN);
 
         fireEvent.change(screen.getByLabelText('Duplicate Window (Minutes)'), {
             target: { value: '15' },
@@ -661,13 +812,16 @@ describe('App', () => {
         fireEvent.click(await screen.findByRole('button', { name: 'Dry Run' }));
 
         await waitFor(() => {
-            expect(mockedDryRun).toHaveBeenCalledWith({
-                streamTitle: '',
-                streamURL: '',
-                category: '',
-                message: '',
-                hashtags: '',
-            });
+            expect(mockedDryRun).toHaveBeenCalledWith(
+                {
+                    streamTitle: '',
+                    streamURL: '',
+                    category: '',
+                    message: '',
+                    hashtags: '',
+                },
+                [],
+            );
         });
 
         expect(await screen.findByText('Dry Run simulated successfully.')).toBeInTheDocument();
@@ -981,13 +1135,16 @@ describe('App', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Confirm Go Live' }));
 
         await waitFor(() => {
-            expect(mockedForceGoLive).toHaveBeenCalledWith({
-                streamTitle: '',
-                streamURL: '',
-                category: '',
-                message: '',
-                hashtags: '',
-            });
+            expect(mockedForceGoLive).toHaveBeenCalledWith(
+                {
+                    streamTitle: '',
+                    streamURL: '',
+                    category: '',
+                    message: '',
+                    hashtags: '',
+                },
+                [],
+            );
         });
 
         expect(await screen.findByText('Discord integration is not connected yet')).toBeInTheDocument();

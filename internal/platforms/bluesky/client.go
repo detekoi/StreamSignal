@@ -130,6 +130,11 @@ func (p *Publisher) PublishPost(ctx context.Context, accountIdentifier string, c
 	return nil
 }
 
+func (p *Publisher) VerifyCredentials(ctx context.Context, accountIdentifier string, credentialKey string) error {
+	_, err := p.createSession(ctx, accountIdentifier, credentialKey)
+	return err
+}
+
 func (p *Publisher) SetLiveNow(ctx context.Context, accountIdentifier string, credentialKey string, status domain.BlueskyLiveNowStatus) error {
 	session, err := p.createSession(ctx, accountIdentifier, credentialKey)
 	if err != nil {

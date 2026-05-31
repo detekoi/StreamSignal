@@ -1,5 +1,27 @@
 export type DestinationPlatform = 'discord' | 'bluesky' | 'mastodon';
 
+export const TEMPLATE_VARIABLES = [
+    '{{stream_title}}',
+    '{{stream_url}}',
+    '{{category}}',
+    '{{message}}',
+    '{{hashtags}}',
+    '{{date}}',
+    '{{time}}',
+    '{{platform}}',
+] as const;
+
+const TEMPLATE_VARIABLE_LABELS: Record<(typeof TEMPLATE_VARIABLES)[number], string> = {
+    '{{stream_title}}': 'title',
+    '{{stream_url}}': 'stream URL',
+    '{{category}}': 'category',
+    '{{message}}': 'message',
+    '{{hashtags}}': 'hashtags',
+    '{{date}}': 'date',
+    '{{time}}': 'time',
+    '{{platform}}': 'platform',
+};
+
 export interface DestinationInput {
     id: string;
     platform: DestinationPlatform;
@@ -15,7 +37,6 @@ export interface DestinationFormState {
     id: string;
     platform: DestinationPlatform;
     name: string;
-    enabled: boolean;
     template: string;
     createdAt?: string;
     updatedAt?: string;
@@ -56,13 +77,29 @@ function parseConfigJSON<T>(configJSON: string): T {
     }
 }
 
+export function defaultTemplateForPlatform(platform: DestinationPlatform): string {
+    switch (platform) {
+        case 'discord':
+            return '{{stream_title}}\n{{stream_url}}\n{{message}}\n{{hashtags}}';
+        case 'bluesky':
+            return '{{stream_title}}\n{{stream_url}}\n{{hashtags}}';
+        case 'mastodon':
+            return '{{stream_title}}\n{{stream_url}}\n{{message}}\n{{hashtags}}';
+        default:
+            return '{{stream_title}}';
+    }
+}
+
+export function usedTemplateVariables(template: string): string[] {
+    return TEMPLATE_VARIABLES.filter((token) => template.includes(token)).map((token) => TEMPLATE_VARIABLE_LABELS[token]);
+}
+
 export function createEmptyDestinationForm(platform: DestinationPlatform = 'discord'): DestinationFormState {
     return {
         id: '',
         platform,
         name: '',
-        enabled: true,
-        template: '',
+        template: defaultTemplateForPlatform(platform),
         createdAt: '',
         updatedAt: '',
         discordServerName: '',
@@ -84,7 +121,6 @@ export function toDestinationFormState(destination: DestinationInput): Destinati
         id: destination.id,
         platform: destination.platform,
         name: destination.name,
-        enabled: destination.enabled,
         template: destination.template,
         createdAt: destination.createdAt ?? '',
         updatedAt: destination.updatedAt ?? '',
@@ -145,7 +181,7 @@ export function toDestinationInput(form: DestinationFormState): DestinationInput
         id: form.id,
         platform: form.platform,
         name: form.name,
-        enabled: form.enabled,
+        enabled: true,
         template: form.template,
         configJSON,
         createdAt: form.createdAt,

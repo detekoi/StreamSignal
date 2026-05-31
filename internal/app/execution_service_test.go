@@ -189,6 +189,50 @@ func TestExecutionServiceDryRunDoesNotCallPublishers(t *testing.T) {
 	}
 }
 
+func TestExecutionServiceDryRunUsesSelectedDestinations(t *testing.T) {
+	destRepo := newDestinationRepositoryStub()
+	destRepo.listItems = []domain.Destination{
+		{
+			ID:         "discord-main",
+			Platform:   domain.PlatformDiscord,
+			Name:       "Main Discord",
+			Enabled:    true,
+			Template:   "{{stream_title}}",
+			ConfigJSON: `{"webhookKey":"https://discord.com/api/webhooks/123/main"}`,
+		},
+		{
+			ID:         "bluesky-main",
+			Platform:   domain.PlatformBluesky,
+			Name:       "Main Bluesky",
+			Enabled:    true,
+			Template:   "{{stream_title}}",
+			ConfigJSON: `{"accountIdentifier":"don.main","credentialKey":"bluesky/main"}`,
+		},
+	}
+	settingsRepo := &settingsRepositoryStub{item: domain.DefaultAppSettings()}
+	history := &postHistoryRepositoryStub{recordsByDestination: map[string][]ports.PostHistoryRecord{}}
+	sessions := &liveNowSessionRepositoryExecutionStub{}
+	discord := &discordPublisherStub{}
+	bluesky := &blueskyPublisherStub{}
+	mastodon := &mastodonPublisherStub{}
+	service := NewExecutionService(destRepo, settingsRepo, history, sessions, discord, bluesky, mastodon)
+
+	summary, err := service.DryRun(context.Background(), domain.Announcement{
+		StreamTitle:    "Going Live",
+		DestinationIDs: []string{"bluesky-main"},
+	})
+	if err != nil {
+		t.Fatalf("dry run: %v", err)
+	}
+
+	if len(summary.Results) != 1 {
+		t.Fatalf("expected 1 selected result, got %d", len(summary.Results))
+	}
+	if summary.Results[0].DestinationID != "bluesky-main" {
+		t.Fatalf("expected selected Bluesky destination, got %+v", summary.Results[0])
+	}
+}
+
 func TestExecutionServiceGoLiveIsolatesDestinationFailures(t *testing.T) {
 	destRepo := newDestinationRepositoryStub()
 	destRepo.listItems = []domain.Destination{
@@ -696,6 +740,35 @@ func TestExecutionServiceEndStreamOptionallyPublishesConfiguredPosts(t *testing.
 	}
 	if len(summary.Results) != 3 {
 		t.Fatalf("expected three end stream results, got %+v", summary.Results)
+	}
+}
+
+func TestExecutionServiceEndStreamDoesNotClearWhenNoTrackedLiveNowSessionExists(t *testing.T) {
+	destRepo := newDestinationRepositoryStub()
+	destRepo.listItems = []domain.Destination{
+		{
+			ID:         "bluesky-main",
+			Platform:   domain.PlatformBluesky,
+			Name:       "Main Bluesky",
+			Enabled:    true,
+			Template:   "{{stream_title}}",
+			ConfigJSON: `{"accountIdentifier":"don.main","credentialKey":"bluesky/main"}`,
+		},
+	}
+	settingsRepo := &settingsRepositoryStub{item: domain.DefaultAppSettings()}
+	bluesky := &blueskyPublisherStub{}
+	sessions := &liveNowSessionRepositoryExecutionStub{}
+	service := NewExecutionService(destRepo, settingsRepo, &postHistoryRepositoryStub{recordsByDestination: map[string][]ports.PostHistoryRecord{}}, sessions, &discordPublisherStub{}, bluesky, &mastodonPublisherStub{})
+
+	summary, err := service.EndStream(context.Background())
+	if err != nil {
+		t.Fatalf("end stream: %v", err)
+	}
+	if len(bluesky.liveNowClearCalls) != 0 {
+		t.Fatalf("expected no live now clear call, got %+v", bluesky.liveNowClearCalls)
+	}
+	if len(summary.Results) != 0 {
+		t.Fatalf("expected no end stream clear results without a tracked session, got %+v", summary.Results)
 	}
 }
 

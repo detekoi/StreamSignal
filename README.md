@@ -2,7 +2,7 @@
 
 StreamSignal is a local-first desktop app for streamers and VTubers that creates one announcement and distributes it to multiple platforms.
 
-Current MVP status:
+Current product status:
 
 - Wails desktop shell, Go backend, and React + TypeScript frontend are all wired together
 - Preview, Dry Run, Go Live, End Stream, duplicate confirmation, and Test Mode routing are implemented
@@ -10,6 +10,8 @@ Current MVP status:
 - Bluesky `Live Now` can be set on Go Live, cleared on End Stream, and manually recovered if the app closes mid-stream
 - runtime secrets are stored through Windows Credential Manager rather than directly in SQLite
 - automated backend and frontend tests are part of the normal workflow
+
+The app is not yet being treated as fully validated MVP-complete. Core workflows are implemented, but we are still actively validating real-world behavior, usability, and human understanding of the UI before calling it release-ready.
 
 ## Stack
 
@@ -50,7 +52,7 @@ npm audit --omit=dev --prefix frontend
 
 - [SECURITY.md](./SECURITY.md): vulnerability reporting policy
 - [SECURITY_AUDIT.md](./SECURITY_AUDIT.md): public-facing security posture summary
+- [INTEGRATION_LIMITATIONS.md](./INTEGRATION_LIMITATIONS.md): current platform integration constraints and boundaries
 - [TEST_VALIDATION.md](./TEST_VALIDATION.md): testing strategy and PR quality-gate guidance
+- [RELEASE_READINESS_CHECKLIST.md](./RELEASE_READINESS_CHECKLIST.md): release and packaging checklist for the next phase
 - [.github/workflows/quality-gate.yml](./.github/workflows/quality-gate.yml): GitHub PR checks
-
-Historical project planning notes remain in [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md) for now, but that file is better treated as build history than core public documentation.

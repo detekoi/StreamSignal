@@ -21,9 +21,9 @@ import (
 type App struct {
 	ctx             context.Context
 	db              *sql.DB
-	overviewService *appsvc.OverviewService
 	settingsService *appsvc.SettingsService
 	destinationSvc  *appsvc.DestinationService
+	credentialSvc   *appsvc.CredentialSetupService
 	previewService  *appsvc.PreviewService
 	logService      *appsvc.LogService
 	diagnosticsSvc  *appsvc.DiagnosticsService
@@ -56,13 +56,15 @@ func newAppWithDependencies(databasePath string, secretStore ports.SecretStore) 
 	logRepo := sqlite.NewLogRepository(db)
 	historyRepo := sqlite.NewPostHistoryRepository(db)
 	liveNowSessionRepo := secure.NewLiveNowSessionRepository(sqlite.NewLiveNowSessionRepository(db), secretStore)
+	discordPublisher := discord.NewPublisher(nil)
 	blueskyPublisher := bluesky.NewPublisher("", nil)
+	mastodonPublisher := mastodon.NewPublisher(nil)
 
 	return &App{
 		db:              db,
-		overviewService: appsvc.NewOverviewService(),
 		settingsService: appsvc.NewSettingsService(settingsRepo),
 		destinationSvc:  appsvc.NewDestinationService(destinationRepo),
+		credentialSvc:   appsvc.NewCredentialSetupService(discordPublisher, blueskyPublisher, mastodonPublisher),
 		previewService:  appsvc.NewPreviewService(destinationRepo, settingsRepo),
 		logService:      appsvc.NewLogService(logRepo),
 		diagnosticsSvc:  appsvc.NewDiagnosticsService(settingsRepo, destinationRepo, logRepo, liveNowSessionRepo),
@@ -71,11 +73,11 @@ func newAppWithDependencies(databasePath string, secretStore ports.SecretStore) 
 			settingsRepo,
 			historyRepo,
 			liveNowSessionRepo,
-			discord.NewPublisher(nil),
+			discordPublisher,
 			blueskyPublisher,
-			mastodon.NewPublisher(nil),
+			mastodonPublisher,
 		),
-		recoverySvc: appsvc.NewLiveNowRecoveryService(liveNowSessionRepo, blueskyPublisher),
+		recoverySvc: appsvc.NewLiveNowRecoveryService(destinationRepo, liveNowSessionRepo, blueskyPublisher),
 	}
 }
 
@@ -89,11 +91,6 @@ func (a *App) shutdown(context.Context) {
 	if a.db != nil {
 		_ = a.db.Close()
 	}
-}
-
-// GetOverview returns milestone and architecture information for the app shell.
-func (a *App) GetOverview() appsvc.AppOverview {
-	return a.overviewService.GetOverview()
 }
 
 func (a *App) GetSettings() (domain.AppSettings, error) {
@@ -126,6 +123,16 @@ func (a *App) DeleteDestination(id string) error {
 		_ = a.logService.Append(a.ctx, id, "delete_destination", "SUCCESS", "Deleted destination configuration.")
 	}
 	return err
+}
+
+func (a *App) TestDestinationConnection(destination domain.Destination) domain.CredentialCheckResult {
+	result := a.credentialSvc.TestDestination(a.ctx, destination)
+	status := result.State
+	if status == "" {
+		status = "FAILED"
+	}
+	_ = a.logService.Append(a.ctx, destination.Name, "test_destination_connection", status, result.Message)
+	return result
 }
 
 func (a *App) GeneratePreview(announcement domain.Announcement) ([]domain.PreviewItem, error) {

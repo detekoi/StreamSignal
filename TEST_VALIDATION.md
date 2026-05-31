@@ -160,6 +160,8 @@ When a PR changes behavior, reviewers should ask:
 
 StreamSignal is aligned with good testing practice for its current maturity.
 
+That does not mean the product itself is fully validated from a user-workflow perspective yet. The automated test posture is strong, but we are still using release-readiness and hands-on usability review to confirm that implemented behavior is understandable and trustworthy for real users.
+
 The main strength is that the suite protects the highest-risk behavior first. The biggest remaining opportunities are refinement, not rescue:
 
 - keep lifting root app-shell confidence when new bindings are added

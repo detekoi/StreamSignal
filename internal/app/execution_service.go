@@ -115,7 +115,18 @@ func (s *ExecutionService) EndStream(ctx context.Context) (domain.ExecutionSumma
 
 	results := make([]domain.ExecutionResult, 0, len(destinations)*2)
 	for _, destination := range destinations {
-		if !destination.Enabled || destination.Platform != domain.PlatformBluesky {
+		if destination.Platform != domain.PlatformBluesky {
+			continue
+		}
+
+		session, ok := sessionByDestination[destination.ID]
+		if !ok {
+			continue
+		}
+		if !trackedSessionMatchesDestination(destination, session) {
+			if err := s.sessions.Delete(ctx, destination.ID); err != nil {
+				return domain.ExecutionSummary{}, err
+			}
 			continue
 		}
 
@@ -142,7 +153,7 @@ func (s *ExecutionService) EndStream(ctx context.Context) (domain.ExecutionSumma
 			continue
 		}
 
-		err = s.clearBlueskyLiveNow(ctx, routedDestination, sessionByDestination[destination.ID])
+		err = s.clearBlueskyLiveNow(ctx, routedDestination, session)
 		if err != nil {
 			state := domain.ExecutionStateFailed
 			if domain.IsIntegrationUnavailable(err) {
@@ -176,9 +187,6 @@ func (s *ExecutionService) EndStream(ctx context.Context) (domain.ExecutionSumma
 		}, settings)
 
 		for _, destination := range destinations {
-			if !destination.Enabled {
-				continue
-			}
 			if err := validateDestinationConfig(destination); err != nil {
 				results = append(results, domain.ExecutionResult{
 					DestinationID:   destination.ID,
@@ -262,6 +270,7 @@ func (s *ExecutionService) execute(ctx context.Context, mode domain.ExecutionMod
 	if err != nil {
 		return nil, domain.AppSettings{}, nil, err
 	}
+	destinations = destinationsForSelection(destinations, announcement.DestinationIDs)
 
 	normalized := domain.NormalizeAnnouncement(announcement, settings)
 	announcementNotes := domain.ValidateAnnouncement(normalized)
@@ -270,10 +279,6 @@ func (s *ExecutionService) execute(ctx context.Context, mode domain.ExecutionMod
 	renderedTargets := make([]renderedExecutionTarget, 0, len(destinations))
 
 	for _, destination := range destinations {
-		if !destination.Enabled {
-			continue
-		}
-
 		content := templates.Render(destination.Template, normalized, destination.Platform, now)
 		renderedTargets = append(renderedTargets, renderedExecutionTarget{destination: destination, content: content})
 		notes := append([]string{}, announcementNotes...)
@@ -435,6 +440,26 @@ func (s *ExecutionService) execute(ctx context.Context, mode domain.ExecutionMod
 	}
 
 	return results, settings, nil, nil
+}
+
+func destinationsForSelection(destinations []domain.Destination, selectedIDs []string) []domain.Destination {
+	if selectedIDs == nil {
+		return destinations
+	}
+
+	allowed := make(map[string]struct{}, len(selectedIDs))
+	for _, id := range selectedIDs {
+		allowed[id] = struct{}{}
+	}
+
+	filtered := make([]domain.Destination, 0, len(destinations))
+	for _, destination := range destinations {
+		if _, ok := allowed[destination.ID]; ok {
+			filtered = append(filtered, destination)
+		}
+	}
+
+	return filtered
 }
 
 func (s *ExecutionService) applyBlueskyLiveNow(ctx context.Context, destination domain.Destination, announcement domain.Announcement) error {

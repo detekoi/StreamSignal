@@ -194,3 +194,20 @@ func TestPublisherReturnsCreateRecordError(t *testing.T) {
 		t.Fatal("expected publish error")
 	}
 }
+
+func TestPublisherVerifiesCredentials(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/xrpc/com.atproto.server.createSession" {
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"accessJwt":"jwt-token","did":"did:plc:test"}`))
+	}))
+	defer server.Close()
+
+	publisher := NewPublisher(server.URL, server.Client())
+
+	if err := publisher.VerifyCredentials(context.Background(), "don.test", "app-password"); err != nil {
+		t.Fatalf("verify credentials: %v", err)
+	}
+}

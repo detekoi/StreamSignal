@@ -103,6 +103,44 @@ func TestSecureDestinationRepositoryMigratesLegacySQLiteSecretsOnRead(t *testing
 	}
 }
 
+func TestSecureDestinationRepositoryDeleteRemovesDestinationAndStoredSecrets(t *testing.T) {
+	db := openTestDB(t)
+	secretStore := memory.NewStore()
+	repository := NewDestinationRepository(sqlitestore.NewDestinationRepository(db), secretStore)
+	now := time.Now().UTC().Round(time.Microsecond)
+
+	item := domain.Destination{
+		ID:         "bluesky-main",
+		Platform:   domain.PlatformBluesky,
+		Name:       "Main Bluesky",
+		Enabled:    true,
+		Template:   "{{stream_title}}",
+		ConfigJSON: `{"accountIdentifier":"don.main","credentialKey":"bluesky-app-password"}`,
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}
+
+	if err := repository.Save(context.Background(), item); err != nil {
+		t.Fatalf("save destination: %v", err)
+	}
+
+	if err := repository.Delete(context.Background(), item.ID); err != nil {
+		t.Fatalf("delete destination: %v", err)
+	}
+
+	list, err := repository.List(context.Background())
+	if err != nil {
+		t.Fatalf("list destinations: %v", err)
+	}
+	if len(list) != 0 {
+		t.Fatalf("expected no destinations after delete, got %+v", list)
+	}
+
+	if _, err := secretStore.Get(context.Background(), destinationSecretKey(item.ID, "bluesky-credential")); err == nil {
+		t.Fatalf("expected destination secret to be removed")
+	}
+}
+
 func TestSecureSettingsRepositoryStoresOnlySecretReferencesInSQLite(t *testing.T) {
 	db := openTestDB(t)
 	repository := NewSettingsRepository(sqlitestore.NewSettingsRepository(db), memory.NewStore())

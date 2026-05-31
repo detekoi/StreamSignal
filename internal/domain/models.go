@@ -3,12 +3,13 @@ package domain
 import "time"
 
 type Announcement struct {
-	StreamTitle string    `json:"streamTitle"`
-	StreamURL   string    `json:"streamURL"`
-	Category    string    `json:"category"`
-	Message     string    `json:"message"`
-	Hashtags    string    `json:"hashtags"`
-	CreatedAt   time.Time `json:"createdAt"`
+	StreamTitle    string    `json:"streamTitle"`
+	StreamURL      string    `json:"streamURL"`
+	Category       string    `json:"category"`
+	Message        string    `json:"message"`
+	Hashtags       string    `json:"hashtags"`
+	DestinationIDs []string  `json:"destinationIDs"`
+	CreatedAt      time.Time `json:"createdAt"`
 }
 
 type DestinationPlatform string
@@ -68,6 +69,12 @@ type LogEntry struct {
 	Action      string    `json:"action"`
 	Status      string    `json:"status"`
 	Message     string    `json:"message"`
+}
+
+type CredentialCheckResult struct {
+	Platform string `json:"platform"`
+	State    string `json:"state"`
+	Message  string `json:"message"`
 }
 
 type PreviewItem struct {

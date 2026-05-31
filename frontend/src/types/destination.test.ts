@@ -1,8 +1,10 @@
 /// <reference types="vitest/globals" />
 import {
     createEmptyDestinationForm,
+    defaultTemplateForPlatform,
     toDestinationFormState,
     toDestinationInput,
+    usedTemplateVariables,
     type DestinationInput,
 } from './destination';
 
@@ -92,5 +94,15 @@ describe('destination mappings', () => {
         expect(form.mastodonAccountIdentifier).toBe('');
         expect(form.mastodonInstanceURL).toBe('');
         expect(form.mastodonCredentialKey).toBe('');
+    });
+
+    it('creates platform starter templates for new destinations', () => {
+        expect(defaultTemplateForPlatform('discord')).toContain('{{stream_url}}');
+        expect(createEmptyDestinationForm('bluesky').template).toBe('{{stream_title}}\n{{stream_url}}\n{{hashtags}}');
+    });
+
+    it('summarizes which announcement fields a template uses', () => {
+        expect(usedTemplateVariables('{{stream_title}}\n{{stream_url}}\n{{hashtags}}')).toEqual(['title', 'stream URL', 'hashtags']);
+        expect(usedTemplateVariables('plain text only')).toEqual([]);
     });
 });

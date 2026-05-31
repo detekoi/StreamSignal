@@ -12,9 +12,9 @@ import (
 func validateDestinationConfig(destination domain.Destination) error {
 	switch destination.Platform {
 	case domain.PlatformDiscord:
-		var config discordDestinationConfig
-		if err := json.Unmarshal([]byte(destination.ConfigJSON), &config); err != nil {
-			return fmt.Errorf("invalid Discord config")
+		config, err := parseDiscordDestinationConfig(destination.ConfigJSON)
+		if err != nil {
+			return err
 		}
 		if strings.TrimSpace(config.WebhookKey) == "" {
 			return fmt.Errorf("Discord webhook key is required")
@@ -24,9 +24,9 @@ func validateDestinationConfig(destination domain.Destination) error {
 		}
 		return nil
 	case domain.PlatformBluesky:
-		var config blueskyDestinationConfig
-		if err := json.Unmarshal([]byte(destination.ConfigJSON), &config); err != nil {
-			return fmt.Errorf("invalid Bluesky config")
+		config, err := parseBlueskyDestinationConfig(destination.ConfigJSON)
+		if err != nil {
+			return err
 		}
 		if strings.TrimSpace(config.AccountIdentifier) == "" {
 			return fmt.Errorf("Bluesky account identifier is required")
@@ -36,9 +36,9 @@ func validateDestinationConfig(destination domain.Destination) error {
 		}
 		return nil
 	case domain.PlatformMastodon:
-		var config mastodonDestinationConfig
-		if err := json.Unmarshal([]byte(destination.ConfigJSON), &config); err != nil {
-			return fmt.Errorf("invalid Mastodon config")
+		config, err := parseMastodonDestinationConfig(destination.ConfigJSON)
+		if err != nil {
+			return err
 		}
 		if strings.TrimSpace(config.CredentialKey) == "" {
 			return fmt.Errorf("Mastodon credential key is required")
@@ -53,4 +53,37 @@ func validateDestinationConfig(destination domain.Destination) error {
 	default:
 		return fmt.Errorf("unsupported destination platform")
 	}
+}
+
+func validateDestinationCredentialConfig(destination domain.Destination) error {
+	switch destination.Platform {
+	case domain.PlatformDiscord, domain.PlatformBluesky, domain.PlatformMastodon:
+		return validateDestinationConfig(destination)
+	default:
+		return fmt.Errorf("unsupported destination platform")
+	}
+}
+
+func parseDiscordDestinationConfig(configJSON string) (discordDestinationConfig, error) {
+	var config discordDestinationConfig
+	if err := json.Unmarshal([]byte(configJSON), &config); err != nil {
+		return discordDestinationConfig{}, fmt.Errorf("invalid Discord config")
+	}
+	return config, nil
+}
+
+func parseBlueskyDestinationConfig(configJSON string) (blueskyDestinationConfig, error) {
+	var config blueskyDestinationConfig
+	if err := json.Unmarshal([]byte(configJSON), &config); err != nil {
+		return blueskyDestinationConfig{}, fmt.Errorf("invalid Bluesky config")
+	}
+	return config, nil
+}
+
+func parseMastodonDestinationConfig(configJSON string) (mastodonDestinationConfig, error) {
+	var config mastodonDestinationConfig
+	if err := json.Unmarshal([]byte(configJSON), &config); err != nil {
+		return mastodonDestinationConfig{}, fmt.Errorf("invalid Mastodon config")
+	}
+	return config, nil
 }

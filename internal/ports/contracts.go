@@ -51,8 +51,16 @@ type DiscordPublisher interface {
 	Publish(ctx context.Context, webhookKey string, content string) error
 }
 
+type DiscordCredentialVerifier interface {
+	VerifyWebhook(ctx context.Context, webhookKey string) error
+}
+
 type BlueskyPublisher interface {
 	PublishPost(ctx context.Context, accountIdentifier string, credentialKey string, content string) error
+}
+
+type BlueskyCredentialVerifier interface {
+	VerifyCredentials(ctx context.Context, accountIdentifier string, credentialKey string) error
 }
 
 type BlueskyLiveNowManager interface {
@@ -62,4 +70,8 @@ type BlueskyLiveNowManager interface {
 
 type MastodonPublisher interface {
 	PublishPost(ctx context.Context, credentialKey string, instanceURL string, content string) error
+}
+
+type MastodonCredentialVerifier interface {
+	VerifyCredentials(ctx context.Context, credentialKey string, instanceURL string) error
 }

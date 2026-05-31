@@ -65,3 +65,31 @@ func TestPublisherReturnsErrorForInvalidURL(t *testing.T) {
 		t.Fatal("expected publish error")
 	}
 }
+
+func TestPublisherVerifiesCredentials(t *testing.T) {
+	var gotMethod string
+	var gotAuth string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/accounts/verify_credentials" {
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+		gotMethod = r.Method
+		gotAuth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	publisher := NewPublisher(server.Client())
+
+	if err := publisher.VerifyCredentials(context.Background(), "mastodon-token", server.URL); err != nil {
+		t.Fatalf("verify credentials: %v", err)
+	}
+
+	if gotMethod != http.MethodGet {
+		t.Fatalf("expected GET, got %s", gotMethod)
+	}
+	if gotAuth != "Bearer mastodon-token" {
+		t.Fatalf("expected bearer token, got %q", gotAuth)
+	}
+}

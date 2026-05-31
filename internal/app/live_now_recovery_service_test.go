@@ -48,7 +48,15 @@ func TestLiveNowRecoveryServiceListsPendingSessions(t *testing.T) {
 			StartedAt:         time.Date(2026, 5, 31, 18, 0, 0, 0, time.UTC),
 		}},
 	}
-	service := NewLiveNowRecoveryService(repository, &blueskyLiveNowManagerStub{})
+	destinations := &destinationListStub{
+		items: []domain.Destination{{
+			ID:         "bluesky-main",
+			Platform:   domain.PlatformBluesky,
+			Name:       "Main Bluesky",
+			ConfigJSON: `{"accountIdentifier":"don.main","credentialKey":"bluesky/main"}`,
+		}},
+	}
+	service := NewLiveNowRecoveryService(destinations, repository, &blueskyLiveNowManagerStub{})
 
 	sessions, err := service.ListPending(context.Background())
 	if err != nil {
@@ -56,6 +64,39 @@ func TestLiveNowRecoveryServiceListsPendingSessions(t *testing.T) {
 	}
 	if len(sessions) != 1 || sessions[0].DestinationID != "bluesky-main" {
 		t.Fatalf("unexpected sessions: %+v", sessions)
+	}
+}
+
+func TestLiveNowRecoveryServicePrunesStalePendingSessions(t *testing.T) {
+	repository := &liveNowSessionRepositoryStub{
+		items: []domain.ActiveLiveNowSession{{
+			DestinationID:     "bluesky-main",
+			DestinationName:   "Main Bluesky",
+			Platform:          string(domain.PlatformBluesky),
+			AccountIdentifier: "old.account",
+			CredentialKey:     "bluesky/main",
+			StartedAt:         time.Date(2026, 5, 31, 18, 0, 0, 0, time.UTC),
+		}},
+	}
+	destinations := &destinationListStub{
+		items: []domain.Destination{{
+			ID:         "bluesky-main",
+			Platform:   domain.PlatformBluesky,
+			Name:       "Main Bluesky",
+			ConfigJSON: `{"accountIdentifier":"don.main","credentialKey":"bluesky/main"}`,
+		}},
+	}
+	service := NewLiveNowRecoveryService(destinations, repository, &blueskyLiveNowManagerStub{})
+
+	sessions, err := service.ListPending(context.Background())
+	if err != nil {
+		t.Fatalf("list pending: %v", err)
+	}
+	if len(sessions) != 0 {
+		t.Fatalf("expected stale session to be pruned, got %+v", sessions)
+	}
+	if len(repository.deletes) != 1 || repository.deletes[0] != "bluesky-main" {
+		t.Fatalf("expected stale session delete, got %+v", repository.deletes)
 	}
 }
 
@@ -73,7 +114,15 @@ func TestLiveNowRecoveryServiceClearsPendingSession(t *testing.T) {
 		}},
 	}
 	manager := &blueskyLiveNowManagerStub{}
-	service := NewLiveNowRecoveryService(repository, manager)
+	destinations := &destinationListStub{
+		items: []domain.Destination{{
+			ID:         "bluesky-main",
+			Platform:   domain.PlatformBluesky,
+			Name:       "Main Bluesky",
+			ConfigJSON: `{"accountIdentifier":"don.main","credentialKey":"bluesky/main"}`,
+		}},
+	}
+	service := NewLiveNowRecoveryService(destinations, repository, manager)
 
 	result, err := service.ClearPending(context.Background(), "bluesky-main")
 	if err != nil {
@@ -102,7 +151,15 @@ func TestLiveNowRecoveryServiceReturnsFailureResultWhenClearFails(t *testing.T) 
 		}},
 	}
 	manager := &blueskyLiveNowManagerStub{clearErr: errors.New("clear denied")}
-	service := NewLiveNowRecoveryService(repository, manager)
+	destinations := &destinationListStub{
+		items: []domain.Destination{{
+			ID:         "bluesky-main",
+			Platform:   domain.PlatformBluesky,
+			Name:       "Main Bluesky",
+			ConfigJSON: `{"accountIdentifier":"don.main","credentialKey":"bluesky/main"}`,
+		}},
+	}
+	service := NewLiveNowRecoveryService(destinations, repository, manager)
 
 	result, err := service.ClearPending(context.Background(), "bluesky-main")
 	if err != nil {

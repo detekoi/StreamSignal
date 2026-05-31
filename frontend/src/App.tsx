@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import './App.css';
 import {
     clearPendingLiveNowSession,
@@ -10,18 +10,21 @@ import {
     getDiagnostics,
     getLogs,
     goLive,
-    getOverview,
     listPendingLiveNowSessions,
     getSettings,
     listDestinations,
     saveDestination,
     saveSettings,
+    testDestinationConnection,
 } from './lib/api/streamsignal';
-import type { AppOverview } from './types/app-overview';
+import type { CredentialCheckResult } from './types/credential-check';
 import {
     createEmptyDestinationForm,
+    defaultTemplateForPlatform,
+    TEMPLATE_VARIABLES,
     toDestinationFormState,
     toDestinationInput,
+    usedTemplateVariables,
     type DestinationFormState,
     type DestinationInput,
 } from './types/destination';
@@ -63,6 +66,11 @@ const defaultSettings: AppSettings = {
 type SecretSettingsCache = Pick<AppSettings, 'testDiscordWebhookKey' | 'testBlueskyCredentialKey' | 'testMastodonCredentialKey'>;
 
 type DestinationSecretCache = Pick<DestinationFormState, 'discordWebhookKey' | 'blueskyCredentialKey' | 'mastodonCredentialKey'>;
+
+type GuidedSetupStep = {
+    title: string;
+    detail: string;
+};
 
 function executionModeLabel(mode: ExecutionSummary['mode']) {
     switch (mode) {
@@ -191,12 +199,80 @@ function toMaskedDestinationForm(form: DestinationFormState): DestinationFormSta
     };
 }
 
+function credentialSetupLabel(platform: DestinationInput['platform']) {
+    switch (platform) {
+        case 'discord':
+            return 'Discord webhook';
+        case 'bluesky':
+            return 'Bluesky app password';
+        case 'mastodon':
+            return 'Mastodon access token';
+        default:
+            return 'credential';
+    }
+}
+
+function guidedSetupSteps(platform: DestinationInput['platform']): GuidedSetupStep[] {
+    switch (platform) {
+        case 'discord':
+            return [
+                {
+                    title: 'Step 1: Create a channel webhook',
+                    detail: 'In Discord, open Server Settings > Integrations > Webhooks, create a webhook for your go-live channel, and copy the webhook URL.',
+                },
+                {
+                    title: 'Step 2: Paste the webhook URL below',
+                    detail: 'Use the full Discord webhook URL. StreamSignal stores it in Windows Credential Manager, not plain text app storage.',
+                },
+                {
+                    title: 'Step 3: Test before saving',
+                    detail: 'Use Test Connection to confirm the webhook responds before you save this destination.',
+                },
+            ];
+        case 'bluesky':
+            return [
+                {
+                    title: 'Step 1: Create an app password',
+                    detail: 'In Bluesky, open Settings > Privacy and Security > App Passwords, create one for StreamSignal, and copy it once.',
+                },
+                {
+                    title: 'Step 2: Enter your handle and app password',
+                    detail: 'Use the Bluesky handle or account identifier for the account that should post and set Live Now.',
+                },
+                {
+                    title: 'Step 3: Test login before saving',
+                    detail: 'Test Connection signs in with the app password so you know the account can be reached before you depend on it.',
+                },
+            ];
+        case 'mastodon':
+            return [
+                {
+                    title: 'Step 1: Create a posting token',
+                    detail: 'In your Mastodon account settings, create an access token with permission to post statuses, then copy the token and your instance URL.',
+                },
+                {
+                    title: 'Step 2: Paste the instance URL and token',
+                    detail: 'Use the full instance URL, like https://mastodon.social, plus the token that belongs to the account you want StreamSignal to use.',
+                },
+                {
+                    title: 'Step 3: Verify the token before saving',
+                    detail: 'Test Connection checks the token against your Mastodon account so invalid or expired tokens fail early.',
+                },
+            ];
+        default:
+            return [];
+    }
+}
+
+function destinationTemplateLabel(platform: DestinationInput['platform']) {
+    return platform === 'bluesky' ? 'Post Template' : 'Template';
+}
+
 function App() {
     const [selectedTab, setSelectedTab] = useState<TabKey>('home');
-    const [overview, setOverview] = useState<AppOverview | null>(null);
-    const [bootstrapError, setBootstrapError] = useState<string | null>(null);
 
     const [announcement, setAnnouncement] = useState<AnnouncementInput>(initialAnnouncement);
+    const [selectedDestinationIDs, setSelectedDestinationIDs] = useState<string[]>([]);
     const [previewItems, setPreviewItems] = useState<PreviewItem[]>([]);
     const [previewError, setPreviewError] = useState<string | null>(null);
     const [previewLoading, setPreviewLoading] = useState(false);
@@ -218,6 +294,10 @@ function App() {
     });
     const [destinationStatus, setDestinationStatus] = useState<string | null>(null);
     const [destinationError, setDestinationError] = useState<string | null>(null);
+    const [destinationConnectionResult, setDestinationConnectionResult] = useState<CredentialCheckResult | null>(null);
+    const [destinationConnectionLoading, setDestinationConnectionLoading] = useState(false);
+    const [destinationHelperStatus, setDestinationHelperStatus] = useState<string | null>(null);
+    const [showGuidedSetup, setShowGuidedSetup] = useState(false);
 
     const [settings, setSettings] = useState<AppSettings>(defaultSettings);
     const [settingsSecrets, setSettingsSecrets] = useState<SecretSettingsCache>({
@@ -230,20 +310,25 @@ function App() {
     const [logs, setLogs] = useState<LogEntry[]>([]);
     const [logsError, setLogsError] = useState<string | null>(null);
     const [diagnosticsStatus, setDiagnosticsStatus] = useState<string | null>(null);
+    const initializedSelection = useRef(false);
 
     useEffect(() => {
-        getOverview()
-            .then(setOverview)
-            .catch((err: unknown) => {
-                const message = err instanceof Error ? err.message : 'Unable to load StreamSignal overview.';
-                setBootstrapError(message);
-            });
-
         void refreshDestinations();
         void refreshSettings();
         void refreshLogs();
         void refreshPendingLiveNowSessions();
     }, []);
+
+    useEffect(() => {
+        const availableIDs = destinations.map((destination) => destination.id);
+        if (availableIDs.length > 0 && !initializedSelection.current) {
+            initializedSelection.current = true;
+            setSelectedDestinationIDs(availableIDs);
+            return;
+        }
+
+        setSelectedDestinationIDs((current) => current.filter((id) => availableIDs.includes(id)));
+    }, [destinations]);
 
     async function refreshDestinations() {
         try {
@@ -292,7 +377,13 @@ function App() {
         setPreviewError(null);
 
         try {
-            const preview = await generatePreview(announcement);
+            if (destinations.length > 0 && selectedDestinationIDs.length === 0) {
+                setPreviewError('Select at least one destination for this session before generating previews.');
+                setPreviewItems([]);
+                return;
+            }
+
+            const preview = await generatePreview(announcement, selectedDestinationIDs);
             setPreviewItems(preview);
         } catch (err: unknown) {
             const message = err instanceof Error ? err.message : 'Unable to generate previews.';
@@ -308,7 +399,14 @@ function App() {
         setExecutionError(null);
 
         try {
-            const summary = mode === 'dry_run' ? await dryRun(announcement) : await goLive(announcement);
+            if (destinations.length > 0 && selectedDestinationIDs.length === 0) {
+                setExecutionError('Select at least one destination for this session before running this action.');
+                setExecutionSummary(null);
+                setPendingGoLiveConfirmation(false);
+                return;
+            }
+
+            const summary = mode === 'dry_run' ? await dryRun(announcement, selectedDestinationIDs) : await goLive(announcement, selectedDestinationIDs);
             if (mode === 'go_live' && summary.requiresDuplicateConfirmation) {
                 setPendingGoLiveConfirmation(true);
                 setExecutionSummary(summary);
@@ -330,7 +428,7 @@ function App() {
         setExecutionLoading('go_live');
         setExecutionError(null);
         try {
-            const summary = await forceGoLive(announcement);
+            const summary = await forceGoLive(announcement, selectedDestinationIDs);
             setPendingGoLiveConfirmation(false);
             setExecutionSummary(summary);
         } catch (err: unknown) {
@@ -395,11 +493,35 @@ function App() {
             const savedForm = toDestinationFormState(saved);
             setDestinationSecrets(destinationSecretCacheFrom(savedForm));
             setDestinationForm(toMaskedDestinationForm(savedForm));
+            setSelectedDestinationIDs((current) => (current.includes(saved.id) ? current : [...current, saved.id]));
             setDestinationStatus('Destination saved.');
             await refreshDestinations();
         } catch (err: unknown) {
             const message = err instanceof Error ? err.message : 'Unable to save destination.';
             setDestinationError(message);
+        }
+    }
+
+    async function onTestDestinationConnection() {
+        setDestinationError(null);
+        setDestinationStatus(null);
+        setDestinationConnectionResult(null);
+        setDestinationConnectionLoading(true);
+
+        try {
+            const resolvedForm: DestinationFormState = {
+                ...destinationForm,
+                discordWebhookKey: resolveSecretInput(destinationForm.discordWebhookKey, destinationSecrets.discordWebhookKey),
+                blueskyCredentialKey: resolveSecretInput(destinationForm.blueskyCredentialKey, destinationSecrets.blueskyCredentialKey),
+                mastodonCredentialKey: resolveSecretInput(destinationForm.mastodonCredentialKey, destinationSecrets.mastodonCredentialKey),
+            };
+            const result = await testDestinationConnection(toDestinationInput(resolvedForm));
+            setDestinationConnectionResult(result);
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : 'Unable to test destination connection.';
+            setDestinationError(message);
+        } finally {
+            setDestinationConnectionLoading(false);
         }
     }
 
@@ -412,6 +534,7 @@ function App() {
         setDestinationStatus(null);
 
         try {
+            const deletedID = destinationForm.id;
             await deleteDestination(destinationForm.id);
             setDestinationForm(createEmptyDestinationForm(destinationForm.platform));
             setDestinationSecrets({
@@ -419,6 +542,7 @@ function App() {
                 blueskyCredentialKey: '',
                 mastodonCredentialKey: '',
             });
+            setSelectedDestinationIDs((current) => current.filter((id) => id !== deletedID));
             setDestinationStatus('Destination deleted.');
             await refreshDestinations();
         } catch (err: unknown) {
@@ -475,10 +599,27 @@ function App() {
     }
 
     function updateDestination<K extends keyof DestinationFormState>(field: K, value: DestinationFormState[K]) {
+        setDestinationConnectionResult(null);
+        setDestinationHelperStatus(null);
         setDestinationForm((current) => ({
             ...current,
             [field]: value,
         }));
+    }
+
+    async function onCopyTemplateVariable(variable: string) {
+        setDestinationHelperStatus(null);
+        try {
+            if (navigator.clipboard?.writeText) {
+                await navigator.clipboard.writeText(variable);
+                setDestinationHelperStatus(`Copied ${variable}`);
+                return;
+            }
+            setDestinationHelperStatus('Clipboard is unavailable in this environment.');
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : 'Unable to copy template variable.';
+            setDestinationHelperStatus(message);
+        }
     }
 
     function updateSettings<K extends keyof AppSettings>(field: K, value: AppSettings[K]) {
@@ -488,6 +629,15 @@ function App() {
         }));
     }
 
+    function toggleSessionDestination(destinationID: string) {
+        setSelectedDestinationIDs((current) =>
+            current.includes(destinationID) ? current.filter((id) => id !== destinationID) : [...current, destinationID],
+        );
+    }
+
+    const configuredDestinationCount = destinations.length;
+    const selectedDestinationCount = selectedDestinationIDs.length;
+
     return (
         <main className="app-shell">
             {settings.testModeEnabled ? (
@@ -495,202 +645,284 @@ function App() {
                     TEST MODE ACTIVE
                 </div>
             ) : null}
-            <section className="hero-panel">
-                <div className="hero-header">
-                    <div>
-                        <p className="eyebrow">{overview?.productName ?? 'StreamSignal'}</p>
-                        <h1>{overview?.tagline ?? 'Send the signal. Go live everywhere.'}</h1>
+            <div className="app-frame">
+                <header className="panel app-header">
+                    <div className="app-header-copy">
+                        <h1>StreamSignal</h1>
                     </div>
-                    <span className="status-pill">Milestone 7</span>
-                </div>
-                <p className="hero-copy">
-                    {bootstrapError
-                        ? bootstrapError
-                        : overview?.currentPhase ?? 'Configuration screens are the next layer of the app shell.'}
-                </p>
-            </section>
+                    <nav className="tab-bar" aria-label="Primary navigation">
+                            <button
+                                aria-label="Home"
+                                className={selectedTab === 'home' ? 'tab-button active' : 'tab-button'}
+                                onClick={() => setSelectedTab('home')}
+                            >
+                                Home
+                            </button>
+                            <button
+                                aria-label="Destinations"
+                                className={selectedTab === 'destinations' ? 'tab-button active' : 'tab-button'}
+                                onClick={() => setSelectedTab('destinations')}
+                            >
+                                Destinations
+                            </button>
+                            <button
+                                aria-label="Settings"
+                                className={selectedTab === 'settings' ? 'tab-button active' : 'tab-button'}
+                                onClick={() => setSelectedTab('settings')}
+                            >
+                                Settings
+                            </button>
+                            <button
+                                aria-label="Logs"
+                                className={selectedTab === 'logs' ? 'tab-button active' : 'tab-button'}
+                                onClick={() => setSelectedTab('logs')}
+                            >
+                                Logs
+                            </button>
+                    </nav>
+                </header>
 
-            <section className="workspace-grid">
-                <nav className="tab-bar" aria-label="Primary navigation">
-                    <button className={selectedTab === 'home' ? 'tab-button active' : 'tab-button'} onClick={() => setSelectedTab('home')}>
-                        Home
-                    </button>
-                    <button
-                        className={selectedTab === 'destinations' ? 'tab-button active' : 'tab-button'}
-                        onClick={() => setSelectedTab('destinations')}
-                    >
-                        Destinations
-                    </button>
-                    <button
-                        className={selectedTab === 'settings' ? 'tab-button active' : 'tab-button'}
-                        onClick={() => setSelectedTab('settings')}
-                    >
-                        Settings
-                    </button>
-                    <button className={selectedTab === 'logs' ? 'tab-button active' : 'tab-button'} onClick={() => setSelectedTab('logs')}>
-                        Logs
-                    </button>
-                </nav>
+                <section className="content-stack">
+                        {selectedTab === 'home' ? (
+                            <>
+                                <article className="panel home-session-panel">
+                                    <div className="panel-header">
+                                        <div>
+                                            <h2>Live Session</h2>
+                                            <p>Set up the announcement, validate it, then publish when you are ready.</p>
+                                        </div>
+                                        <div className="home-status-inline">
+                                            {settings.testModeEnabled ? <span className="status-pill">Test Mode</span> : null}
+                                            {pendingLiveNowSessions.length > 0 ? (
+                                                <span className="status-pill">{pendingLiveNowSessions.length} recovery pending</span>
+                                            ) : null}
+                                        </div>
+                                    </div>
 
-                {selectedTab === 'home' ? (
-                    <>
-                        <article className="panel">
-                            <div className="panel-header">
-                                <h2>Home</h2>
-                                <span>Preview workflow</span>
-                            </div>
+                                    <form className="announcement-form" onSubmit={onPreviewSubmit}>
+                                        <div className="form-grid">
+                                            <label className="field">
+                                                <span>Stream Title</span>
+                                                <input
+                                                    aria-label="Stream Title"
+                                                    value={announcement.streamTitle}
+                                                    onChange={(event) => updateAnnouncement('streamTitle', event.target.value)}
+                                                    placeholder="Late Night Variety"
+                                                />
+                                            </label>
 
-                            <form className="announcement-form" onSubmit={onPreviewSubmit}>
-                                <label className="field">
-                                    <span>Stream Title</span>
-                                    <input
-                                        aria-label="Stream Title"
-                                        value={announcement.streamTitle}
-                                        onChange={(event) => updateAnnouncement('streamTitle', event.target.value)}
-                                        placeholder="Late Night Variety"
-                                    />
-                                </label>
+                                            <label className="field">
+                                                <span>Stream URL</span>
+                                                <input
+                                                    aria-label="Stream URL"
+                                                    value={announcement.streamURL}
+                                                    onChange={(event) => updateAnnouncement('streamURL', event.target.value)}
+                                                    placeholder="https://example.com/live"
+                                                />
+                                            </label>
 
-                                <label className="field">
-                                    <span>Stream URL</span>
-                                    <input
-                                        aria-label="Stream URL"
-                                        value={announcement.streamURL}
-                                        onChange={(event) => updateAnnouncement('streamURL', event.target.value)}
-                                        placeholder="https://example.com/live"
-                                    />
-                                </label>
+                                            <label className="field">
+                                                <span>Category / Game</span>
+                                                <input
+                                                    aria-label="Category / Game"
+                                                    value={announcement.category}
+                                                    onChange={(event) => updateAnnouncement('category', event.target.value)}
+                                                    placeholder="Music, FFXIV, Variety..."
+                                                />
+                                            </label>
 
-                                <label className="field">
-                                    <span>Category / Game</span>
-                                    <input
-                                        aria-label="Category / Game"
-                                        value={announcement.category}
-                                        onChange={(event) => updateAnnouncement('category', event.target.value)}
-                                        placeholder="Music, FFXIV, Variety..."
-                                    />
-                                </label>
+                                            <label className="field">
+                                                <span>Hashtags</span>
+                                                <input
+                                                    aria-label="Hashtags"
+                                                    value={announcement.hashtags}
+                                                    onChange={(event) => updateAnnouncement('hashtags', event.target.value)}
+                                                    placeholder="#vtuber #music"
+                                                />
+                                            </label>
+                                        </div>
 
-                                <label className="field">
-                                    <span>Optional Message</span>
-                                    <textarea
-                                        aria-label="Optional Message"
-                                        value={announcement.message}
-                                        onChange={(event) => updateAnnouncement('message', event.target.value)}
-                                        placeholder="What are we getting into tonight?"
-                                        rows={4}
-                                    />
-                                </label>
+                                        <label className="field">
+                                            <span>Optional Message</span>
+                                            <textarea
+                                                aria-label="Optional Message"
+                                                value={announcement.message}
+                                                onChange={(event) => updateAnnouncement('message', event.target.value)}
+                                                placeholder="What are we getting into tonight?"
+                                                rows={4}
+                                            />
+                                        </label>
 
-                                <label className="field">
-                                    <span>Hashtags</span>
-                                    <input
-                                        aria-label="Hashtags"
-                                        value={announcement.hashtags}
-                                        onChange={(event) => updateAnnouncement('hashtags', event.target.value)}
-                                        placeholder="#vtuber #music"
-                                    />
-                                </label>
-
-                                <div className="form-actions">
-                                    <button type="submit" className="primary-button" disabled={previewLoading}>
-                                        {previewLoading ? 'Generating...' : 'Generate Preview'}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className="ghost-button"
-                                        onClick={() => {
-                                            setAnnouncement(initialAnnouncement);
-                                            setPreviewError(null);
-                                            setPreviewItems([]);
-                                        }}
-                                    >
-                                        Reset
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className="ghost-button"
-                                        onClick={() => void runExecution('dry_run')}
-                                        disabled={executionLoading !== null}
-                                    >
-                                        {executionLoading === 'dry_run' ? 'Running Dry Run...' : 'Dry Run'}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className="primary-button"
-                                        onClick={() => void runExecution('go_live')}
-                                        disabled={executionLoading !== null}
-                                    >
-                                        {executionLoading === 'go_live' ? 'Running Go Live...' : 'Go Live'}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className="ghost-button"
-                                        onClick={() => void onEndStream()}
-                                        disabled={executionLoading !== null}
-                                    >
-                                        {executionLoading === 'end_stream' ? 'Ending Stream...' : 'End Stream'}
-                                    </button>
-                                </div>
-                            </form>
-                        </article>
-
-                        <article className="panel">
-                            <div className="panel-header">
-                                <h2>Preview Panel</h2>
-                                <span>{previewItems.length} destinations</span>
-                            </div>
-
-                            {previewError ? <p className="error-banner">{previewError}</p> : null}
-
-                            {previewItems.length === 0 ? (
-                                <div className="empty-state">
-                                    <h3>No previews yet</h3>
-                                    <p>Generate a preview to see per-destination content, character counts, and validation state.</p>
-                                </div>
-                            ) : (
-                                <div className="preview-list">
-                                    {previewItems.map((item) => (
-                                        <section key={item.destinationID} className="preview-card">
-                                            <div className="preview-topline">
+                                        <section className="session-destination-panel">
+                                            <div className="session-destination-header">
                                                 <div>
-                                                    <h3>{item.destinationName}</h3>
-                                                    <p className="preview-platform">{item.platform}</p>
+                                                    <h3>Send To</h3>
+                                                    <p>
+                                                        {configuredDestinationCount === 0
+                                                            ? 'Add destinations in the Destinations tab first.'
+                                                            : `${selectedDestinationCount} of ${configuredDestinationCount} selected for this session.`}
+                                                        {settings.testModeEnabled && configuredDestinationCount > 0 ? ' Test Mode will reroute live posting to your test credentials.' : ''}
+                                                        {pendingLiveNowSessions.length > 0 ? ` ${pendingLiveNowSessions.length} Live Now recovery item${pendingLiveNowSessions.length === 1 ? ' is' : 's are'} still pending.` : ''}
+                                                    </p>
                                                 </div>
-                                                <span className={`preview-status status-${item.validationState.toLowerCase()}`}>
-                                                    {item.validationState}
-                                                </span>
+                                                {configuredDestinationCount > 0 ? (
+                                                    <div className="session-destination-actions">
+                                                        <button
+                                                            type="button"
+                                                            className="ghost-button"
+                                                            onClick={() => setSelectedDestinationIDs(destinations.map((destination) => destination.id))}
+                                                        >
+                                                            All
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            className="ghost-button"
+                                                            onClick={() => setSelectedDestinationIDs([])}
+                                                        >
+                                                            None
+                                                        </button>
+                                                    </div>
+                                                ) : null}
                                             </div>
 
-                                            <pre className="preview-content">{item.content || '(empty content)'}</pre>
-
-                                            <div className="preview-meta">
-                                                <span>{item.characterCount} characters</span>
-                                                <span>{item.validationNotes.length} notes</span>
-                                            </div>
-
-                                            {item.validationNotes.length > 0 ? (
-                                                <ul className="note-list">
-                                                    {item.validationNotes.map((note) => (
-                                                        <li key={note}>{note}</li>
+                                            {configuredDestinationCount > 0 ? (
+                                                <div className="session-destination-list">
+                                                    {destinations.map((destination) => (
+                                                        <label key={destination.id} className="session-destination-option">
+                                                            <input
+                                                                type="checkbox"
+                                                                aria-label={destination.name}
+                                                                checked={selectedDestinationIDs.includes(destination.id)}
+                                                                onChange={() => toggleSessionDestination(destination.id)}
+                                                            />
+                                                            <span className="session-destination-copy">
+                                                                <strong>{destination.name}</strong>
+                                                                <small>{destination.platform}</small>
+                                                            </span>
+                                                        </label>
                                                     ))}
-                                                </ul>
-                                            ) : (
-                                                <p className="success-copy">This preview is ready from a validation standpoint.</p>
-                                            )}
+                                                </div>
+                                            ) : null}
                                         </section>
-                                    ))}
-                                </div>
-                            )}
-                        </article>
 
-                        <article className="panel panel-wide">
-                            <div className="panel-header">
-                                <h2>Execution Results</h2>
-                                <span className={executionSummary ? `status-pill status-${executionSummary.status.toLowerCase()}` : 'status-pill'}>
-                                    {executionSummary?.status ?? executionSummary?.mode ?? 'idle'}
-                                </span>
-                            </div>
+                                        <div className="workflow-actions">
+                                            <div className="workflow-action-group">
+                                                <span className="workflow-label">Prepare</span>
+                                                <div className="action-cluster-main">
+                                                    <button type="submit" className="primary-button" disabled={previewLoading}>
+                                                        {previewLoading ? 'Generating...' : 'Generate Preview'}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="ghost-button"
+                                                        onClick={() => void runExecution('dry_run')}
+                                                        disabled={executionLoading !== null}
+                                                    >
+                                                        {executionLoading === 'dry_run' ? 'Running Dry Run...' : 'Dry Run'}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="ghost-button"
+                                                        onClick={() => {
+                                                            setAnnouncement(initialAnnouncement);
+                                                            setPreviewError(null);
+                                                            setPreviewItems([]);
+                                                        }}
+                                                    >
+                                                        Reset
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div className="workflow-action-group workflow-action-group-live">
+                                                <span className="workflow-label">Commit</span>
+                                                <div className="action-cluster-secondary">
+                                                    <button
+                                                        type="button"
+                                                        className="primary-button"
+                                                        onClick={() => void runExecution('go_live')}
+                                                        disabled={executionLoading !== null}
+                                                    >
+                                                        {executionLoading === 'go_live' ? 'Running Go Live...' : 'Go Live'}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="ghost-button"
+                                                        onClick={() => void onEndStream()}
+                                                        disabled={executionLoading !== null}
+                                                    >
+                                                        {executionLoading === 'end_stream' ? 'Ending Stream...' : 'End Stream'}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </form>
+                                </article>
+
+                                <article className="panel">
+                                        <div className="panel-header">
+                                            <div>
+                                                <h2>Preview Panel</h2>
+                                                <p>See the exact message each selected destination will receive.</p>
+                                            </div>
+                                            <span>{previewItems.length} destinations</span>
+                                        </div>
+
+                                    {previewError ? <p className="error-banner">{previewError}</p> : null}
+
+                                    {previewItems.length === 0 ? (
+                                        <div className="empty-state">
+                                            <h3>No previews yet</h3>
+                                            <p>
+                                                {destinations.length === 0
+                                                    ? 'Add at least one destination first, then generate a preview to see per-destination content.'
+                                                    : selectedDestinationIDs.length === 0
+                                                      ? 'Select at least one destination for this session, then generate a preview to see per-destination content.'
+                                                      : 'Generate a preview to see per-destination content, character counts, and validation state.'}
+                                            </p>
+                                        </div>
+                                    ) : (
+                                        <div className="preview-list">
+                                            {previewItems.map((item) => (
+                                                <section key={item.destinationID} className="preview-card">
+                                                    <div className="preview-topline">
+                                                        <div>
+                                                            <h3>{item.destinationName}</h3>
+                                                            <p className="preview-platform">{item.platform}</p>
+                                                        </div>
+                                                        <span className={`preview-status status-${item.validationState.toLowerCase()}`}>
+                                                            {item.validationState}
+                                                        </span>
+                                                    </div>
+
+                                                    <pre className="preview-content">{item.content || '(empty content)'}</pre>
+
+                                                    <div className="preview-meta">
+                                                        <span>{item.characterCount} characters</span>
+                                                        <span>{item.validationNotes.length} notes</span>
+                                                    </div>
+
+                                                    {item.validationNotes.length > 0 ? (
+                                                        <ul className="note-list">
+                                                            {item.validationNotes.map((note) => (
+                                                                <li key={note}>{note}</li>
+                                                            ))}
+                                                        </ul>
+                                                    ) : (
+                                                        <p className="success-copy">This preview is ready from a validation standpoint.</p>
+                                                    )}
+                                                </section>
+                                            ))}
+                                        </div>
+                                    )}
+                                </article>
+
+                                <article className="panel">
+                                    <div className="panel-header">
+                                        <h2>Execution Results</h2>
+                                        <span className={executionSummary ? `status-pill status-${executionSummary.status.toLowerCase()}` : 'status-pill'}>
+                                            {executionSummary?.status ?? executionSummary?.mode ?? 'idle'}
+                                        </span>
+                                    </div>
                             {executionError ? <p className="error-banner">{executionError}</p> : null}
                             {executionStatusMessage(executionSummary) ? (
                                 <div className={executionSummary?.status === 'PARTIAL' ? 'error-banner' : 'warning-banner'}>
@@ -777,52 +1009,94 @@ function App() {
                                     )}
                                 </>
                             )}
-                        </article>
-                    </>
-                ) : null}
+                                </article>
+                            </>
+                        ) : null}
 
-                {selectedTab === 'destinations' ? (
-                    <>
-                        <article className="panel">
-                            <div className="panel-header">
-                                <h2>Destinations</h2>
-                                <span>{destinations.length} configured</span>
-                            </div>
-                            {destinationError ? <p className="error-banner">{destinationError}</p> : null}
-                            {destinationStatus ? <p className="success-banner">{destinationStatus}</p> : null}
-
-                            <div className="destination-list">
-                                {destinations.length === 0 ? (
-                                    <div className="empty-state">
-                                        <h3>No destinations yet</h3>
-                                        <p>Create a destination to start building platform-specific previews and go-live targets.</p>
+                        {selectedTab === 'destinations' ? (
+                            <>
+                                <article className="panel panel-wide">
+                                    <div className="panel-header">
+                                        <div>
+                                            <h2>Destinations</h2>
+                                            <p>Connect each platform once, test the credentials, and reuse them for every stream.</p>
+                                        </div>
+                                        <span>{destinations.length} configured</span>
                                     </div>
-                                ) : (
-                                    destinations.map((item) => (
-                                        <button
-                                            key={item.id}
-                                            className={destinationForm.id === item.id ? 'destination-item active' : 'destination-item'}
-                                            onClick={() => {
-                                                const form = toDestinationFormState(item);
-                                                setDestinationSecrets(destinationSecretCacheFrom(form));
-                                                setDestinationForm(toMaskedDestinationForm(form));
-                                            }}
-                                        >
-                                            <strong>{item.name}</strong>
-                                            <span>{item.platform}</span>
-                                        </button>
-                                    ))
-                                )}
-                            </div>
-                        </article>
+                                    {destinationError ? <p className="error-banner">{destinationError}</p> : null}
+                                    {destinationStatus ? <p className="success-banner">{destinationStatus}</p> : null}
+                                </article>
 
-                        <article className="panel">
-                            <div className="panel-header">
-                                <h2>{destinationForm.id ? 'Edit Destination' : 'New Destination'}</h2>
-                                <span>CRUD-ready</span>
-                            </div>
+                                <article className="panel panel-wide">
+                                    <div className="panel-header">
+                                        <div>
+                                            <h2>Saved Destinations</h2>
+                                            <p>Pick one to edit, or start a fresh destination setup.</p>
+                                        </div>
+                                        <div className="form-actions">
+                                            <span>{configuredDestinationCount} configured</span>
+                                            <button
+                                                type="button"
+                                                className="ghost-button"
+                                                onClick={() => {
+                                                    setDestinationSecrets({
+                                                        discordWebhookKey: '',
+                                                        blueskyCredentialKey: '',
+                                                        mastodonCredentialKey: '',
+                                                    });
+                                                    setDestinationForm(createEmptyDestinationForm(destinationForm.platform));
+                                                    setDestinationConnectionResult(null);
+                                                    setDestinationHelperStatus(null);
+                                                }}
+                                            >
+                                                New Destination
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div className="saved-destinations-grid">
+                                        {destinations.length === 0 ? (
+                                            <div className="empty-state">
+                                                <h3>No destinations yet</h3>
+                                                <p>Create a destination to start building platform-specific previews and go-live targets.</p>
+                                            </div>
+                                        ) : (
+                                            destinations.map((item) => (
+                                                <button
+                                                    key={item.id}
+                                                    className={destinationForm.id === item.id ? 'destination-item active' : 'destination-item'}
+                                                    onClick={() => {
+                                                        const form = toDestinationFormState(item);
+                                                        setDestinationSecrets(destinationSecretCacheFrom(form));
+                                                        setDestinationForm(toMaskedDestinationForm(form));
+                                                        setDestinationConnectionResult(null);
+                                                        setDestinationHelperStatus(null);
+                                                    }}
+                                                >
+                                                    <strong>{item.name}</strong>
+                                                    <span>{item.platform}</span>
+                                                </button>
+                                            ))
+                                        )}
+                                    </div>
+                                </article>
+
+                                <article className="panel panel-wide">
+                                        <div className="panel-header">
+                                            <div>
+                                                <h2>{destinationForm.id ? 'Edit Destination' : 'New Destination'}</h2>
+                                                <p>Fill in the platform details, test them, then save.</p>
+                                            </div>
+                                            <div className="form-actions">
+                                                <span>Posting setup</span>
+                                                <button type="button" className="ghost-button" onClick={() => setShowGuidedSetup(true)}>
+                                                    Setup Help
+                                                </button>
+                                            </div>
+                                        </div>
 
                             <form className="announcement-form" onSubmit={onDestinationSubmit}>
+                                <div className="form-grid">
                                 <label className="field">
                                     <span>Platform</span>
                                     <select
@@ -834,11 +1108,11 @@ function App() {
                                                 blueskyCredentialKey: '',
                                                 mastodonCredentialKey: '',
                                             });
+                                            setDestinationConnectionResult(null);
                                             setDestinationForm((current) => ({
                                                 ...createEmptyDestinationForm(event.target.value as DestinationInput['platform']),
                                                 id: current.id,
                                                 name: current.name,
-                                                enabled: current.enabled,
                                                 createdAt: current.createdAt,
                                                 updatedAt: current.updatedAt,
                                             }));
@@ -860,26 +1134,51 @@ function App() {
                                     />
                                 </label>
 
-                                <label className="field checkbox-field">
-                                    <input
-                                        aria-label="Enabled"
-                                        type="checkbox"
-                                        checked={destinationForm.enabled}
-                                        onChange={(event) => updateDestination('enabled', event.target.checked)}
-                                    />
-                                    <span>Enabled</span>
-                                </label>
+                                </div>
 
                                 <label className="field">
-                                    <span>{destinationForm.platform === 'bluesky' ? 'Post Template' : 'Template'}</span>
+                                    <span>{destinationTemplateLabel(destinationForm.platform)}</span>
                                     <textarea
-                                        aria-label={destinationForm.platform === 'bluesky' ? 'Post Template' : 'Template'}
+                                        aria-label={destinationTemplateLabel(destinationForm.platform)}
                                         value={destinationForm.template}
                                         onChange={(event) => updateDestination('template', event.target.value)}
                                         placeholder="{{stream_title}}"
                                         rows={5}
                                     />
                                 </label>
+
+                                <section className="mini-panel template-helper-panel">
+                                    <div className="template-helper-header">
+                                        <h3>How This Template Works</h3>
+                                        <button
+                                            type="button"
+                                            className="ghost-button"
+                                            onClick={() => updateDestination('template', defaultTemplateForPlatform(destinationForm.platform))}
+                                        >
+                                            Reset to Starter Template
+                                        </button>
+                                    </div>
+                                    <p>Only fields referenced in this template will appear in the published post. The announcement form does not automatically include every field unless the template asks for it.</p>
+                                    <p>
+                                        Uses:{' '}
+                                        {usedTemplateVariables(destinationForm.template).length > 0
+                                            ? usedTemplateVariables(destinationForm.template).join(', ')
+                                            : 'no announcement fields yet'}
+                                    </p>
+                                    {destinationHelperStatus ? <p className="success-copy">{destinationHelperStatus}</p> : null}
+                                    <div className="template-token-list" role="list" aria-label="Available template variables">
+                                        {TEMPLATE_VARIABLES.map((variable) => (
+                                            <button
+                                                key={variable}
+                                                type="button"
+                                                className="template-token"
+                                                onClick={() => void onCopyTemplateVariable(variable)}
+                                            >
+                                                {variable}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </section>
 
                                 {destinationForm.platform === 'discord' ? (
                                     <>
@@ -902,12 +1201,12 @@ function App() {
                                             />
                                         </label>
                                         <label className="field">
-                                            <span>Webhook Key</span>
+                                            <span>Webhook URL</span>
                                             <input
-                                                aria-label="Webhook Key"
+                                                aria-label="Webhook URL"
                                                 value={destinationForm.discordWebhookKey}
                                                 onChange={(event) => updateDestination('discordWebhookKey', event.target.value)}
-                                                placeholder="discord/main"
+                                                placeholder="https://discord.com/api/webhooks/..."
                                             />
                                         </label>
                                     </>
@@ -925,12 +1224,12 @@ function App() {
                                             />
                                         </label>
                                         <label className="field">
-                                            <span>Credential Key</span>
+                                            <span>App Password</span>
                                             <input
-                                                aria-label="Credential Key"
+                                                aria-label="App Password"
                                                 value={destinationForm.blueskyCredentialKey}
                                                 onChange={(event) => updateDestination('blueskyCredentialKey', event.target.value)}
-                                                placeholder="bluesky/main"
+                                                placeholder="xxxx-xxxx-xxxx-xxxx"
                                             />
                                         </label>
                                         <label className="field">
@@ -967,34 +1266,29 @@ function App() {
                                             />
                                         </label>
                                         <label className="field">
-                                            <span>Credential Key</span>
+                                            <span>Access Token</span>
                                             <input
-                                                aria-label="Credential Key"
+                                                aria-label="Access Token"
                                                 value={destinationForm.mastodonCredentialKey}
                                                 onChange={(event) => updateDestination('mastodonCredentialKey', event.target.value)}
-                                                placeholder="mastodon/main"
+                                                placeholder="Paste Mastodon access token"
                                             />
                                         </label>
                                     </>
                                 ) : null}
 
-                                <div className="form-actions">
+                                <div className="action-cluster">
+                                    <div className="action-cluster-main">
                                     <button type="submit" className="primary-button">
                                         Save Destination
                                     </button>
                                     <button
                                         type="button"
                                         className="ghost-button"
-                                        onClick={() => {
-                                            setDestinationSecrets({
-                                                discordWebhookKey: '',
-                                                blueskyCredentialKey: '',
-                                                mastodonCredentialKey: '',
-                                            });
-                                            setDestinationForm(createEmptyDestinationForm(destinationForm.platform));
-                                        }}
+                                        onClick={() => void onTestDestinationConnection()}
+                                        disabled={destinationConnectionLoading}
                                     >
-                                        New
+                                        {destinationConnectionLoading ? 'Testing Connection...' : `Test ${credentialSetupLabel(destinationForm.platform)}`}
                                     </button>
                                     <button
                                         type="button"
@@ -1004,22 +1298,77 @@ function App() {
                                     >
                                         Delete
                                     </button>
+                                    </div>
                                 </div>
-                            </form>
-                        </article>
-                    </>
-                ) : null}
 
-                {selectedTab === 'settings' ? (
-                    <article className="panel panel-wide">
-                        <div className="panel-header">
-                            <h2>Settings</h2>
-                            <span>App defaults and safety rails</span>
-                        </div>
+                                {destinationConnectionResult ? (
+                                    destinationConnectionResult.state === 'SUCCESS' ? (
+                                        <p className="success-banner">
+                                            {destinationConnectionResult.message}
+                                        </p>
+                                    ) : (
+                                        <p className="error-banner">
+                                            {destinationConnectionResult.message}
+                                        </p>
+                                    )
+                                ) : null}
+                            </form>
+                                </article>
+
+                                {showGuidedSetup ? (
+                                    <div className="modal-backdrop" role="presentation" onClick={() => setShowGuidedSetup(false)}>
+                                        <section
+                                            className="panel modal-panel"
+                                            role="dialog"
+                                            aria-modal="true"
+                                            aria-label="Guided Credential Setup"
+                                            onClick={(event) => event.stopPropagation()}
+                                        >
+                                            <div className="panel-header">
+                                                <div>
+                                                    <h2>{destinationForm.platform.charAt(0).toUpperCase() + destinationForm.platform.slice(1)} Setup</h2>
+                                                    <p>Use these steps, then come back and test the destination before saving.</p>
+                                                </div>
+                                                <button type="button" className="ghost-button" onClick={() => setShowGuidedSetup(false)}>
+                                                    Close
+                                                </button>
+                                            </div>
+                                            <div className="guided-setup-list">
+                                                {guidedSetupSteps(destinationForm.platform).map((step) => (
+                                                    <section className="guided-setup-step" key={step.title}>
+                                                        <strong>{step.title}</strong>
+                                                        <p>{step.detail}</p>
+                                                    </section>
+                                                ))}
+                                            </div>
+                                        </section>
+                                    </div>
+                                ) : null}
+                            </>
+                        ) : null}
+
+                        {selectedTab === 'settings' ? (
+                            <>
+                                <article className="panel panel-wide">
+                                    <div className="panel-header">
+                                        <div>
+                                            <h2>Settings</h2>
+                                            <p>Adjust defaults, route safe tests, and manage recovery tools.</p>
+                                        </div>
+                                        <span>App defaults and safety rails</span>
+                                    </div>
                         {settingsError ? <p className="error-banner">{settingsError}</p> : null}
                         {settingsStatus ? <p className="success-banner">{settingsStatus}</p> : null}
+                                </article>
 
-                        <form className="announcement-form settings-grid" onSubmit={onSettingsSubmit}>
+                                <section className="two-column-layout">
+                                    <article className="panel">
+                                        <section className="mini-panel">
+                                            <h3>Test Mode Credentials</h3>
+                                            <p>These optional values are only used when Test Mode is enabled. They are stored in Windows Credential Manager, separate from your normal posting destinations.</p>
+                                        </section>
+
+                                        <form className="announcement-form settings-grid" onSubmit={onSettingsSubmit}>
                             <label className="field checkbox-field">
                                 <input
                                     aria-label="Test Mode Enabled"
@@ -1031,12 +1380,12 @@ function App() {
                             </label>
 
                             <label className="field">
-                                <span>Test Discord Webhook Key</span>
+                                <span>Test Discord Webhook URL</span>
                                 <input
-                                    aria-label="Test Discord Webhook Key"
+                                    aria-label="Test Discord Webhook URL"
                                     value={settings.testDiscordWebhookKey}
                                     onChange={(event) => updateSettings('testDiscordWebhookKey', event.target.value)}
-                                    placeholder="discord/test"
+                                    placeholder="https://discord.com/api/webhooks/..."
                                 />
                             </label>
 
@@ -1051,22 +1400,22 @@ function App() {
                             </label>
 
                             <label className="field">
-                                <span>Test Bluesky Credential Key</span>
+                                <span>Test Bluesky App Password</span>
                                 <input
-                                    aria-label="Test Bluesky Credential Key"
+                                    aria-label="Test Bluesky App Password"
                                     value={settings.testBlueskyCredentialKey}
                                     onChange={(event) => updateSettings('testBlueskyCredentialKey', event.target.value)}
-                                    placeholder="bluesky/test"
+                                    placeholder="xxxx-xxxx-xxxx-xxxx"
                                 />
                             </label>
 
                             <label className="field">
-                                <span>Test Mastodon Credential Key</span>
+                                <span>Test Mastodon Access Token</span>
                                 <input
-                                    aria-label="Test Mastodon Credential Key"
+                                    aria-label="Test Mastodon Access Token"
                                     value={settings.testMastodonCredentialKey}
                                     onChange={(event) => updateSettings('testMastodonCredentialKey', event.target.value)}
-                                    placeholder="mastodon/test"
+                                    placeholder="Paste Mastodon access token"
                                 />
                             </label>
 
@@ -1147,48 +1496,58 @@ function App() {
                                     Save Settings
                                 </button>
                             </div>
-                        </form>
+                                        </form>
+                                    </article>
 
-                        <section className="mini-panel">
-                            <h3>Live Now Recovery</h3>
-                            <p>Use this if Stream Signal closed before Bluesky Live Now was cleared, or if a pending session needs to be cleaned up manually.</p>
-                            {recoveryError ? <p className="error-banner">{recoveryError}</p> : null}
-                            {recoveryStatus ? <p className="success-banner">{recoveryStatus}</p> : null}
+                                    <article className="panel">
+                                        <section className="mini-panel">
+                                            <h3>Live Now Recovery</h3>
+                                            <p>Use this if Stream Signal closed before Bluesky Live Now was cleared, or if a pending session needs to be cleaned up manually.</p>
+                                            {recoveryError ? <p className="error-banner">{recoveryError}</p> : null}
+                                            {recoveryStatus ? <p className="success-banner">{recoveryStatus}</p> : null}
 
-                            {pendingLiveNowSessions.length === 0 ? (
-                                <p>No pending Live Now sessions.</p>
-                            ) : (
-                                <div className="logs-list">
-                                    {pendingLiveNowSessions.map((session) => (
-                                        <section className="log-row" key={session.destinationID}>
-                                            <div className="log-summary">
-                                                <strong>{session.destinationName}</strong>
-                                                <span>{session.platform}</span>
-                                            </div>
-                                            <p>{session.streamTitle || 'Untitled stream'}</p>
-                                            <p>{session.streamURL}</p>
-                                            <button
-                                                type="button"
-                                                className="ghost-button"
-                                                onClick={() => void onClearPendingLiveNow(session.destinationID)}
-                                                disabled={recoveryLoadingId !== null}
-                                            >
-                                                {recoveryLoadingId === session.destinationID ? 'Recovering Live Now...' : 'Recover and Clear Live Now'}
-                                            </button>
+                                            {pendingLiveNowSessions.length === 0 ? (
+                                                <div className="empty-state compact-empty-state">
+                                                    <h3>No pending Live Now sessions.</h3>
+                                                    <p>When recovery is needed, each session will appear here with a one-click clear action.</p>
+                                                </div>
+                                            ) : (
+                                                <div className="logs-list">
+                                                    {pendingLiveNowSessions.map((session) => (
+                                                        <section className="log-row" key={session.destinationID}>
+                                                            <div className="log-summary">
+                                                                <strong>{session.destinationName}</strong>
+                                                                <span>{session.platform}</span>
+                                                            </div>
+                                                            <p>{session.streamTitle || 'Untitled stream'}</p>
+                                                            <p>{session.streamURL}</p>
+                                                            <button
+                                                                type="button"
+                                                                className="ghost-button"
+                                                                onClick={() => void onClearPendingLiveNow(session.destinationID)}
+                                                                disabled={recoveryLoadingId !== null}
+                                                            >
+                                                                {recoveryLoadingId === session.destinationID ? 'Recovering Live Now...' : 'Recover and Clear Live Now'}
+                                                            </button>
+                                                        </section>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </section>
-                                    ))}
-                                </div>
-                            )}
-                        </section>
-                    </article>
-                ) : null}
+                                    </article>
+                                </section>
+                            </>
+                        ) : null}
 
-                {selectedTab === 'logs' ? (
-                    <article className="panel panel-wide">
-                        <div className="panel-header">
-                            <h2>Logs</h2>
-                            <span>{logs.length} recent entries</span>
-                        </div>
+                        {selectedTab === 'logs' ? (
+                            <article className="panel panel-wide">
+                                <div className="panel-header">
+                                    <div>
+                                        <h2>Logs</h2>
+                                        <p>Review recent app activity and export diagnostics when you need support context.</p>
+                                    </div>
+                                    <span>{logs.length} recent entries</span>
+                                </div>
                         {logsError ? <p className="error-banner">{logsError}</p> : null}
                         {diagnosticsStatus ? <p className="success-banner">{diagnosticsStatus}</p> : null}
 
@@ -1221,36 +1580,10 @@ function App() {
                                 ))}
                             </div>
                         )}
-                    </article>
-                ) : null}
-
-                {selectedTab === 'home' && overview ? (
-                    <article className="panel panel-wide">
-                        <div className="panel-header">
-                            <h2>Milestone Radar</h2>
-                            <span>Current map</span>
-                        </div>
-                        <div className="milestone-grid">
-                            <div className="mini-panel">
-                                <h3>Now</h3>
-                                <ul className="list">
-                                    {overview.nextActions.map((item) => (
-                                        <li key={item}>{item}</li>
-                                    ))}
-                                </ul>
-                            </div>
-                            <div className="mini-panel">
-                                <h3>Guardrails</h3>
-                                <ul className="list">
-                                    {overview.highlights.map((item) => (
-                                        <li key={item}>{item}</li>
-                                    ))}
-                                </ul>
-                            </div>
-                        </div>
-                    </article>
-                ) : null}
-            </section>
+                            </article>
+                        ) : null}
+                </section>
+            </div>
         </main>
     );
 }

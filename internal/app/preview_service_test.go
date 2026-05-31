@@ -40,21 +40,19 @@ func (s *settingsLoadStub) Save(context.Context, domain.AppSettings) error {
 	panic("unexpected Save call")
 }
 
-func TestPreviewServiceGeneratesItemsForEnabledDestinations(t *testing.T) {
+func TestPreviewServiceGeneratesItemsForSelectedDestinations(t *testing.T) {
 	destinations := &destinationListStub{
 		items: []domain.Destination{
 			{
 				ID:       "discord-main",
 				Platform: domain.PlatformDiscord,
 				Name:     "Main Discord",
-				Enabled:  true,
 				Template: "{{stream_title}} {{stream_url}} {{hashtags}}",
 			},
 			{
 				ID:       "bsky-disabled",
 				Platform: domain.PlatformBluesky,
-				Name:     "Disabled",
-				Enabled:  false,
+				Name:     "Secondary Bluesky",
 				Template: "{{stream_title}}",
 			},
 		},
@@ -70,7 +68,8 @@ func TestPreviewServiceGeneratesItemsForEnabledDestinations(t *testing.T) {
 	service.clock = fixedClock{now: now}
 
 	items, err := service.Generate(context.Background(), domain.Announcement{
-		StreamTitle: "Going Live",
+		StreamTitle:    "Going Live",
+		DestinationIDs: []string{"discord-main"},
 	})
 	if err != nil {
 		t.Fatalf("generate preview: %v", err)
@@ -96,7 +95,6 @@ func TestPreviewServiceCarriesValidationNotesIntoPreviewItems(t *testing.T) {
 				ID:       "bluesky-main",
 				Platform: domain.PlatformBluesky,
 				Name:     "Main Bluesky",
-				Enabled:  true,
 				Template: "{{message}}",
 			},
 		},

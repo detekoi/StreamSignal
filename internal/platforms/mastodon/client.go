@@ -62,3 +62,33 @@ func (p *Publisher) PublishPost(ctx context.Context, credentialKey string, insta
 
 	return nil
 }
+
+func (p *Publisher) VerifyCredentials(ctx context.Context, credentialKey string, instanceURL string) error {
+	request, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodGet,
+		strings.TrimRight(strings.TrimSpace(instanceURL), "/")+"/api/v1/accounts/verify_credentials",
+		nil,
+	)
+	if err != nil {
+		return fmt.Errorf("build Mastodon verify request: %w", err)
+	}
+	request.Header.Set("Authorization", "Bearer "+strings.TrimSpace(credentialKey))
+
+	response, err := p.client.Do(request)
+	if err != nil {
+		return fmt.Errorf("send Mastodon verify request: %w", err)
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		responseBody, _ := io.ReadAll(io.LimitReader(response.Body, 512))
+		message := strings.TrimSpace(string(responseBody))
+		if message != "" {
+			return fmt.Errorf("Mastodon verify request failed: %s: %s", response.Status, message)
+		}
+		return fmt.Errorf("Mastodon verify request failed: %s", response.Status)
+	}
+
+	return nil
+}

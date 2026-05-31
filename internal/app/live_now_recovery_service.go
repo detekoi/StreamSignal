@@ -9,23 +9,25 @@ import (
 )
 
 type LiveNowRecoveryService struct {
-	sessions ports.LiveNowSessionRepository
-	liveNow  *BlueskyLiveNowService
+	destinations ports.DestinationRepository
+	sessions     ports.LiveNowSessionRepository
+	liveNow      *BlueskyLiveNowService
 }
 
-func NewLiveNowRecoveryService(sessions ports.LiveNowSessionRepository, manager ports.BlueskyLiveNowManager) *LiveNowRecoveryService {
+func NewLiveNowRecoveryService(destinations ports.DestinationRepository, sessions ports.LiveNowSessionRepository, manager ports.BlueskyLiveNowManager) *LiveNowRecoveryService {
 	return &LiveNowRecoveryService{
-		sessions: sessions,
-		liveNow:  NewBlueskyLiveNowService(manager),
+		destinations: destinations,
+		sessions:     sessions,
+		liveNow:      NewBlueskyLiveNowService(manager),
 	}
 }
 
 func (s *LiveNowRecoveryService) ListPending(ctx context.Context) ([]domain.ActiveLiveNowSession, error) {
-	return s.sessions.List(ctx)
+	return s.validPendingSessions(ctx)
 }
 
 func (s *LiveNowRecoveryService) ClearPending(ctx context.Context, destinationID string) (domain.ExecutionResult, error) {
-	sessions, err := s.sessions.List(ctx)
+	sessions, err := s.validPendingSessions(ctx)
 	if err != nil {
 		return domain.ExecutionResult{}, err
 	}
@@ -56,4 +58,34 @@ func (s *LiveNowRecoveryService) ClearPending(ctx context.Context, destinationID
 	}
 
 	return domain.ExecutionResult{}, fmt.Errorf("no pending Live Now session found for destination %q", destinationID)
+}
+
+func (s *LiveNowRecoveryService) validPendingSessions(ctx context.Context) ([]domain.ActiveLiveNowSession, error) {
+	destinations, err := s.destinations.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	destinationByID := make(map[string]domain.Destination, len(destinations))
+	for _, destination := range destinations {
+		destinationByID[destination.ID] = destination
+	}
+
+	sessions, err := s.sessions.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	filtered := make([]domain.ActiveLiveNowSession, 0, len(sessions))
+	for _, session := range sessions {
+		destination, ok := destinationByID[session.DestinationID]
+		if !ok || !trackedSessionMatchesDestination(destination, session) {
+			if err := s.sessions.Delete(ctx, session.DestinationID); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		filtered = append(filtered, session)
+	}
+
+	return filtered, nil
 }
