@@ -16,7 +16,7 @@ Core constraints:
 
 ## Current Status
 
-Milestones 0 through 7 are complete.
+Milestones 0 through 9 are complete.
 
 Completed outcomes:
 
@@ -511,7 +511,7 @@ Exit criteria:
 
 Status:
 
-- in progress
+- complete
 
 Current milestone-9 progress:
 
@@ -522,6 +522,9 @@ Current milestone-9 progress:
 - first security audit document and dependency check results are recorded
 - diagnostics exports redact pending Live Now session content by default
 - secret-edit screens now use masked placeholders instead of rehydrating visible raw secrets
+- the GitHub-hosted quality gate has been verified live against the public repository
+- CI now builds the frontend before backend tests so Wails embed checks pass in automation
+- the repo now declares a current Go toolchain and uses Node 24-capable GitHub Action versions
 
 ## Test Strategy
 
@@ -597,8 +600,8 @@ Mitigation:
 
 ## Recommended Next Step
 
-Continue post-MVP validation in this order:
+Return to release-readiness items:
 
-1. Milestone 9: Full Security Audit and remediation
-2. then return to release-readiness items like Windows Credential Manager, packaging, installer flow, and first-run UX
-3. keep the new PR quality-gate expectations aligned with the real risk areas in the codebase
+1. packaging and installer flow
+2. first-run UX and documentation polish
+3. routine maintenance for the security and quality gates

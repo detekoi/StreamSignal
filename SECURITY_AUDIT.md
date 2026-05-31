@@ -113,7 +113,9 @@ Result on May 31, 2026:
 Status:
 
 - `govulncheck` has been added to the GitHub quality gate workflow
-- it should still be verified in live GitHub Actions runs once the public repository is active
+- the live GitHub Actions quality gate has now been verified successfully against the public repository
+- the workflow now builds the frontend before backend tests so `go test ./...` can validate the Wails embed path in CI
+- the workflow uses a current Go toolchain declaration and Node 24-capable action versions
 
 ### Improved: stored secrets now use masked-edit UX in the desktop UI
 
@@ -149,6 +151,6 @@ This pass especially aligns with:
 
 ## Follow-Up Recommendations
 
-1. verify the GitHub-hosted quality gate in live repository runs
-2. consider whether diagnostics export needs multiple redaction tiers before broader release
-3. continue reviewing Test Mode, recovery, and outbound adapters whenever new platforms or workflows are added
+1. consider whether diagnostics export needs multiple redaction tiers before broader release
+2. continue reviewing Test Mode, recovery, and outbound adapters whenever new platforms or workflows are added
+3. keep the Go toolchain and GitHub Action versions current as part of regular maintenance

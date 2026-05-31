@@ -30,7 +30,7 @@ func (s *OverviewService) GetOverview() AppOverview {
 	return AppOverview{
 		ProductName:   "StreamSignal",
 		Tagline:       "Send the signal. Go live everywhere.",
-		CurrentPhase:  "Milestone 8 is complete. Milestone 9 is now focused on a full security audit and high-value remediation work.",
+		CurrentPhase:  "Milestone 9 is complete. StreamSignal is now in release-readiness mode with validated security and quality gates.",
 		FrontendStack: "React + TypeScript via Wails",
 		BackendStack:  "Go application services and Wails bindings",
 		DataStack:     "SQLite for app data, Windows Credential Manager for secrets",
@@ -89,7 +89,7 @@ func (s *OverviewService) GetOverview() AppOverview {
 			{
 				Title:       "Milestone 9",
 				Description: "Run a full security audit, prioritize findings, and implement the most important remediations.",
-				Status:      "in_progress",
+				Status:      "done",
 			},
 		},
 		Architecture: []OverviewItem{
@@ -110,9 +110,9 @@ func (s *OverviewService) GetOverview() AppOverview {
 			},
 		},
 		NextActions: []string{
-			"Verify the GitHub-hosted quality gate in live repository runs once the public repo is active.",
-			"Continue the security pass on diagnostics depth, recovery behavior, and future adapter additions.",
-			"Use the test-validation baseline to verify security changes without weakening workflow safety.",
+			"Package the desktop app for release and validate the installer flow.",
+			"Polish first-run guidance and public documentation for new users.",
+			"Keep the CI quality gate and security posture current as dependencies and workflows evolve.",
 		},
 		AcceptanceBars: []string{
 			"Core workflows stay testable without launching the UI.",
