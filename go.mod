@@ -2,6 +2,8 @@ module StreamSignal
 
 go 1.23.0
 
+toolchain go1.26.3
+
 require (
 	github.com/google/uuid v1.6.0
 	github.com/wailsapp/wails/v2 v2.12.0
