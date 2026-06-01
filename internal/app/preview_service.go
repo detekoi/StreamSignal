@@ -43,6 +43,9 @@ func (s *PreviewService) Generate(ctx context.Context, announcement domain.Annou
 		content := templates.Render(destination.Template, normalized, destination.Platform, now)
 		notes := append([]string{}, announcementNotes...)
 		notes = append(notes, domain.ValidatePreviewContent(destination.Platform, content)...)
+		if err := validateDestinationConfig(destination); err != nil {
+			notes = append(notes, err.Error())
+		}
 
 		items = append(items, domain.PreviewItem{
 			DestinationID:   destination.ID,

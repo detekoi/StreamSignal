@@ -26,6 +26,7 @@ describe('destination mappings', () => {
         expect(form.discordServerName).toBe('My Server');
         expect(form.discordChannelName).toBe('go-live');
         expect(form.discordWebhookKey).toBe('discord/main');
+        expect(form.environment).toBe('production');
     });
 
     it('serializes a Bluesky form state into destination config json', () => {
@@ -35,12 +36,15 @@ describe('destination mappings', () => {
         form.blueskyAccountIdentifier = 'don.test';
         form.blueskyCredentialKey = 'bluesky/main';
         form.blueskyLiveStatusTemplate = 'LIVE {{stream_title}}';
+        form.blueskyLiveNowDurationMinutes = '90';
+        form.blueskyCardThumbnailURL = 'https://example.com/avatar.png';
+        form.blueskyCardThumbnailDataURL = 'data:image/png;base64,abc';
 
         const destination = toDestinationInput(form);
 
         expect(destination.platform).toBe('bluesky');
         expect(destination.configJSON).toBe(
-            '{"accountIdentifier":"don.test","credentialKey":"bluesky/main","liveStatusTemplate":"LIVE {{stream_title}}"}',
+            '{"environment":"production","accountIdentifier":"don.test","credentialKey":"bluesky/main","liveStatusTemplate":"LIVE {{stream_title}}","liveNowDurationMinutes":90,"cardThumbnailURL":"https://example.com/avatar.png","cardThumbnailDataURL":"data:image/png;base64,abc"}',
         );
     });
 
@@ -51,7 +55,7 @@ describe('destination mappings', () => {
             name: 'Main Bluesky',
             enabled: true,
             template: '{{stream_title}}',
-            configJSON: '{"accountIdentifier":"don.test","credentialKey":"bluesky/main","liveStatusTemplate":"LIVE {{stream_title}}"}',
+            configJSON: '{"environment":"test","accountIdentifier":"don.test","credentialKey":"bluesky/main","liveStatusTemplate":"LIVE {{stream_title}}","liveNowDurationMinutes":45,"cardThumbnailURL":"https://example.com/avatar.png","cardThumbnailDataURL":"data:image/png;base64,abc"}',
             createdAt: '',
             updatedAt: '',
         };
@@ -61,6 +65,10 @@ describe('destination mappings', () => {
         expect(form.blueskyAccountIdentifier).toBe('don.test');
         expect(form.blueskyCredentialKey).toBe('bluesky/main');
         expect(form.blueskyLiveStatusTemplate).toBe('LIVE {{stream_title}}');
+        expect(form.blueskyLiveNowDurationMinutes).toBe('45');
+        expect(form.blueskyCardThumbnailURL).toBe('https://example.com/avatar.png');
+        expect(form.blueskyCardThumbnailDataURL).toBe('data:image/png;base64,abc');
+        expect(form.environment).toBe('test');
     });
 
     it('serializes a Mastodon form state into destination config json', () => {
@@ -75,7 +83,7 @@ describe('destination mappings', () => {
 
         expect(destination.platform).toBe('mastodon');
         expect(destination.configJSON).toBe(
-            '{"accountIdentifier":"@don@example.social","instanceURL":"https://mastodon.social","credentialKey":"mastodon/main"}',
+            '{"environment":"production","accountIdentifier":"@don@example.social","instanceURL":"https://mastodon.social","credentialKey":"mastodon/main"}',
         );
     });
 

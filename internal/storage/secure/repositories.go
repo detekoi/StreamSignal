@@ -28,18 +28,24 @@ type LiveNowSessionRepository struct {
 }
 
 type discordDestinationConfig struct {
+	Environment string `json:"environment,omitempty"`
 	ServerName  string `json:"serverName,omitempty"`
 	ChannelName string `json:"channelName,omitempty"`
 	WebhookKey  string `json:"webhookKey,omitempty"`
 }
 
 type blueskyDestinationConfig struct {
-	AccountIdentifier  string `json:"accountIdentifier,omitempty"`
-	CredentialKey      string `json:"credentialKey,omitempty"`
-	LiveStatusTemplate string `json:"liveStatusTemplate,omitempty"`
+	Environment            string `json:"environment,omitempty"`
+	AccountIdentifier      string `json:"accountIdentifier,omitempty"`
+	CredentialKey          string `json:"credentialKey,omitempty"`
+	LiveStatusTemplate     string `json:"liveStatusTemplate,omitempty"`
+	LiveNowDurationMinutes int    `json:"liveNowDurationMinutes,omitempty"`
+	CardThumbnailURL       string `json:"cardThumbnailURL,omitempty"`
+	CardThumbnailDataURL   string `json:"cardThumbnailDataURL,omitempty"`
 }
 
 type mastodonDestinationConfig struct {
+	Environment       string `json:"environment,omitempty"`
 	AccountIdentifier string `json:"accountIdentifier,omitempty"`
 	InstanceURL       string `json:"instanceURL,omitempty"`
 	CredentialKey     string `json:"credentialKey,omitempty"`
@@ -61,6 +67,9 @@ func (r *DestinationRepository) List(ctx context.Context) ([]domain.Destination,
 	items, err := r.inner.List(ctx)
 	if err != nil {
 		return nil, err
+	}
+	if items == nil {
+		items = make([]domain.Destination, 0)
 	}
 
 	for index := range items {
@@ -134,6 +143,9 @@ func (r *LiveNowSessionRepository) List(ctx context.Context) ([]domain.ActiveLiv
 	items, err := r.inner.List(ctx)
 	if err != nil {
 		return nil, err
+	}
+	if items == nil {
+		items = make([]domain.ActiveLiveNowSession, 0)
 	}
 
 	for index := range items {

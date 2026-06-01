@@ -10,10 +10,6 @@ export function DeleteDestination(arg1) {
   return window['go']['main']['App']['DeleteDestination'](arg1);
 }
 
-export function DryRun(arg1) {
-  return window['go']['main']['App']['DryRun'](arg1);
-}
-
 export function EndStream() {
   return window['go']['main']['App']['EndStream']();
 }

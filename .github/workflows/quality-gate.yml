@@ -82,6 +82,6 @@ jobs:
         working-directory: frontend
         run: npm run build
 
-      - name: Run production dependency audit
+      - name: Run frontend dependency audit
         working-directory: frontend
-        run: npm audit --omit=dev
+        run: npm audit

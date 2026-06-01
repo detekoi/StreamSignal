@@ -83,7 +83,6 @@ func TestExecutionLogMessageIncludesCountsAndConfirmationState(t *testing.T) {
 	wantParts := []string{
 		"Go Live returned 3 results",
 		"1 success, 1 failed, 1 skipped, 0 validation",
-		"Test Mode routing was active.",
 		"Duplicate confirmation required.",
 	}
 
@@ -203,53 +202,6 @@ func TestAppTestDestinationConnectionReturnsValidationResult(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("expected test_destination_connection log entry, got %+v", logs)
-	}
-}
-
-func TestAppDryRunDelegatesAndLogs(t *testing.T) {
-	app := newTestApp(t)
-
-	_, err := app.SaveDestination(domain.Destination{
-		ID:         "discord-main",
-		Platform:   domain.PlatformDiscord,
-		Name:       "Main Discord",
-		Enabled:    true,
-		Template:   "{{stream_title}} {{stream_url}}",
-		ConfigJSON: `{"webhookKey":"https://discord.example/webhook"}`,
-		CreatedAt:  time.Now().UTC(),
-		UpdatedAt:  time.Now().UTC(),
-	})
-	if err != nil {
-		t.Fatalf("save destination: %v", err)
-	}
-
-	summary, err := app.DryRun(domain.Announcement{
-		StreamTitle: "Live",
-		StreamURL:   "https://example.com/live",
-	})
-	if err != nil {
-		t.Fatalf("dry run: %v", err)
-	}
-	if summary.Mode != domain.ExecutionModeDryRun || summary.SuccessCount != 1 {
-		t.Fatalf("unexpected dry run summary: %+v", summary)
-	}
-
-	logs, err := app.GetLogs()
-	if err != nil {
-		t.Fatalf("get logs: %v", err)
-	}
-	found := false
-	for _, entry := range logs {
-		if entry.Action == "dry_run" && entry.Status == "SUCCESS" {
-			found = true
-			if !strings.Contains(entry.Message, "Dry Run returned 1 results") {
-				t.Fatalf("expected dry run summary log message, got %+v", entry)
-			}
-			break
-		}
-	}
-	if !found {
-		t.Fatalf("expected dry_run log entry, got %+v", logs)
 	}
 }
 

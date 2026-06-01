@@ -56,7 +56,7 @@ order by destination_name asc`)
 	}
 	defer rows.Close()
 
-	var sessions []domain.ActiveLiveNowSession
+	sessions := make([]domain.ActiveLiveNowSession, 0)
 	for rows.Next() {
 		var session domain.ActiveLiveNowSession
 		var startedAt string

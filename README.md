@@ -5,9 +5,9 @@ StreamSignal is a local-first desktop app for streamers and VTubers that creates
 Current product status:
 
 - Wails desktop shell, Go backend, and React + TypeScript frontend are all wired together
-- Preview, Dry Run, Go Live, End Stream, duplicate confirmation, and Test Mode routing are implemented
+- Preview, Go Live, End Stream, duplicate confirmation, and explicit production/test destinations are implemented
 - Discord, Bluesky, and Mastodon publishers are connected
-- Bluesky `Live Now` can be set on Go Live, cleared on End Stream, and manually recovered if the app closes mid-stream
+- Bluesky posting has been validated with app-password auth, rich stream links, external cards, configurable `Live Now` duration, End Stream clearing, and manual recovery if the app closes mid-stream
 - runtime secrets are stored through Windows Credential Manager rather than directly in SQLite
 - automated backend and frontend tests are part of the normal workflow
 
@@ -38,14 +38,15 @@ wails build
 Run the automated test suites:
 
 ```bash
+cd frontend && npm run build
 go test ./...
 npm test --prefix frontend
 ```
 
-Run the frontend production dependency audit:
+Run the frontend dependency audit:
 
 ```bash
-npm audit --omit=dev --prefix frontend
+npm audit --prefix frontend
 ```
 
 ## Project Docs

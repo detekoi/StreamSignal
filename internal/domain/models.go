@@ -102,6 +102,14 @@ type BlueskyLiveNowStatus struct {
 	DurationMinutes int    `json:"durationMinutes"`
 }
 
+type BlueskyPostMetadata struct {
+	StreamURL        string
+	StreamTitle      string
+	Description      string
+	ThumbnailURL     string
+	ThumbnailDataURL string
+}
+
 type ActiveLiveNowSession struct {
 	DestinationID     string    `json:"destinationID"`
 	DestinationName   string    `json:"destinationName"`

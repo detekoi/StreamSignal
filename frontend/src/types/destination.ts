@@ -1,4 +1,5 @@
 export type DestinationPlatform = 'discord' | 'bluesky' | 'mastodon';
+export type DestinationEnvironment = 'production' | 'test';
 
 export const TEMPLATE_VARIABLES = [
     '{{stream_title}}',
@@ -37,6 +38,7 @@ export interface DestinationFormState {
     id: string;
     platform: DestinationPlatform;
     name: string;
+    environment: DestinationEnvironment;
     template: string;
     createdAt?: string;
     updatedAt?: string;
@@ -46,6 +48,9 @@ export interface DestinationFormState {
     blueskyAccountIdentifier: string;
     blueskyCredentialKey: string;
     blueskyLiveStatusTemplate: string;
+    blueskyLiveNowDurationMinutes: string;
+    blueskyCardThumbnailURL: string;
+    blueskyCardThumbnailDataURL: string;
     mastodonAccountIdentifier: string;
     mastodonInstanceURL: string;
     mastodonCredentialKey: string;
@@ -55,18 +60,24 @@ interface DiscordConfig {
     serverName?: string;
     channelName?: string;
     webhookKey?: string;
+    environment?: DestinationEnvironment;
 }
 
 interface BlueskyConfig {
     accountIdentifier?: string;
     credentialKey?: string;
     liveStatusTemplate?: string;
+    liveNowDurationMinutes?: number;
+    cardThumbnailURL?: string;
+    cardThumbnailDataURL?: string;
+    environment?: DestinationEnvironment;
 }
 
 interface MastodonConfig {
     accountIdentifier?: string;
     instanceURL?: string;
     credentialKey?: string;
+    environment?: DestinationEnvironment;
 }
 
 function parseConfigJSON<T>(configJSON: string): T {
@@ -75,6 +86,10 @@ function parseConfigJSON<T>(configJSON: string): T {
     } catch {
         return {} as T;
     }
+}
+
+function parseEnvironment(value?: string): DestinationEnvironment {
+    return value === 'test' ? 'test' : 'production';
 }
 
 export function defaultTemplateForPlatform(platform: DestinationPlatform): string {
@@ -99,6 +114,7 @@ export function createEmptyDestinationForm(platform: DestinationPlatform = 'disc
         id: '',
         platform,
         name: '',
+        environment: 'production',
         template: defaultTemplateForPlatform(platform),
         createdAt: '',
         updatedAt: '',
@@ -108,6 +124,9 @@ export function createEmptyDestinationForm(platform: DestinationPlatform = 'disc
         blueskyAccountIdentifier: '',
         blueskyCredentialKey: '',
         blueskyLiveStatusTemplate: '',
+        blueskyLiveNowDurationMinutes: '120',
+        blueskyCardThumbnailURL: '',
+        blueskyCardThumbnailDataURL: '',
         mastodonAccountIdentifier: '',
         mastodonInstanceURL: '',
         mastodonCredentialKey: '',
@@ -128,6 +147,7 @@ export function toDestinationFormState(destination: DestinationInput): Destinati
 
     if (destination.platform === 'discord') {
         const config = parseConfigJSON<DiscordConfig>(destination.configJSON);
+        next.environment = parseEnvironment(config.environment);
         next.discordServerName = config.serverName ?? '';
         next.discordChannelName = config.channelName ?? '';
         next.discordWebhookKey = config.webhookKey ?? '';
@@ -135,13 +155,18 @@ export function toDestinationFormState(destination: DestinationInput): Destinati
 
     if (destination.platform === 'bluesky') {
         const config = parseConfigJSON<BlueskyConfig>(destination.configJSON);
+        next.environment = parseEnvironment(config.environment);
         next.blueskyAccountIdentifier = config.accountIdentifier ?? '';
         next.blueskyCredentialKey = config.credentialKey ?? '';
         next.blueskyLiveStatusTemplate = config.liveStatusTemplate ?? '';
+        next.blueskyLiveNowDurationMinutes = String(config.liveNowDurationMinutes ?? 120);
+        next.blueskyCardThumbnailURL = config.cardThumbnailURL ?? '';
+        next.blueskyCardThumbnailDataURL = config.cardThumbnailDataURL ?? '';
     }
 
     if (destination.platform === 'mastodon') {
         const config = parseConfigJSON<MastodonConfig>(destination.configJSON);
+        next.environment = parseEnvironment(config.environment);
         next.mastodonAccountIdentifier = config.accountIdentifier ?? '';
         next.mastodonInstanceURL = config.instanceURL ?? '';
         next.mastodonCredentialKey = config.credentialKey ?? '';
@@ -155,6 +180,7 @@ export function toDestinationInput(form: DestinationFormState): DestinationInput
 
     if (form.platform === 'discord') {
         configJSON = JSON.stringify({
+            environment: form.environment,
             serverName: form.discordServerName,
             channelName: form.discordChannelName,
             webhookKey: form.discordWebhookKey,
@@ -163,14 +189,19 @@ export function toDestinationInput(form: DestinationFormState): DestinationInput
 
     if (form.platform === 'bluesky') {
         configJSON = JSON.stringify({
+            environment: form.environment,
             accountIdentifier: form.blueskyAccountIdentifier,
             credentialKey: form.blueskyCredentialKey,
             liveStatusTemplate: form.blueskyLiveStatusTemplate,
+            liveNowDurationMinutes: Number.parseInt(form.blueskyLiveNowDurationMinutes, 10) || 120,
+            cardThumbnailURL: form.blueskyCardThumbnailURL,
+            cardThumbnailDataURL: form.blueskyCardThumbnailDataURL,
         });
     }
 
     if (form.platform === 'mastodon') {
         configJSON = JSON.stringify({
+            environment: form.environment,
             accountIdentifier: form.mastodonAccountIdentifier,
             instanceURL: form.mastodonInstanceURL,
             credentialKey: form.mastodonCredentialKey,

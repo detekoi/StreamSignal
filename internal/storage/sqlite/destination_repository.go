@@ -26,7 +26,7 @@ order by name asc`)
 	}
 	defer rows.Close()
 
-	var destinations []domain.Destination
+	destinations := make([]domain.Destination, 0)
 	for rows.Next() {
 		destination, err := scanDestination(rows)
 		if err != nil {

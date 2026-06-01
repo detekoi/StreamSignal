@@ -41,8 +41,8 @@ Frontend coverage from `npm run test:coverage`:
 ### What we are doing right
 
 - testing by seam, not by file count
-- validating safety rules like Preview and Dry Run staying network-free
-- protecting Test Mode routing with direct assertions
+- validating safety rules like Preview staying network-free
+- protecting destination selection and publishing targets with direct assertions
 - covering partial-failure behavior instead of only happy paths
 - validating recovery and diagnostics flows, not just posting flows
 
@@ -69,8 +69,19 @@ Frontend coverage from `npm run test:coverage`:
 - added app-shell tests for:
   - settings persistence and logging
   - preview plus diagnostics binding behavior
-  - Dry Run binding and summary logging
+  - Go Live binding and summary logging
 - added tests for the unavailable publisher adapters so safe fallback semantics are explicit
+
+## Current Bluesky Coverage
+
+Recent workflow work added or updated tests for:
+
+- Preview validation replacing the removed Dry Run path
+- explicit production/test destination targeting
+- Bluesky rich text link facets and external stream cards
+- Bluesky card thumbnail upload from both URL and local-image data URL
+- Bluesky `Live Now` duration configuration, set, clear, and recovery behavior
+- defensive thumbnail validation for non-image, oversized, and non-HTTP inputs
 
 ## Standard For Future Work
 
@@ -94,7 +105,7 @@ Every pull request should pass:
 - `govulncheck ./...`
 - `npm test --prefix frontend`
 - `npm run build --prefix frontend`
-- `npm audit --omit=dev --prefix frontend`
+- `npm audit --prefix frontend`
 
 If a PR changes dependency manifests, add:
 
@@ -122,7 +133,7 @@ Recommended baseline thresholds for automated warning, not immediate failure:
 Recommended failure conditions:
 
 - a PR lowers coverage in `internal/app`, `internal/duplicate`, `internal/platforms/*`, or `frontend/src/App.tsx` without adding equivalent protection elsewhere
-- a PR changes execution, Test Mode, duplicate protection, Live Now, recovery, or diagnostics behavior without adding or updating tests
+- a PR changes execution, destination targeting, duplicate protection, Live Now, recovery, or diagnostics behavior without adding or updating tests
 - a PR introduces snapshot-style UI tests instead of behavior-focused assertions for workflow changes
 
 ### Risk-based required tests

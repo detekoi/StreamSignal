@@ -3,8 +3,8 @@ import './App.css';
 import {
     clearPendingLiveNowSession,
     deleteDestination,
-    dryRun,
     endStream,
+    errorMessage,
     forceGoLive,
     generatePreview,
     getDiagnostics,
@@ -74,8 +74,6 @@ type GuidedSetupStep = {
 
 function executionModeLabel(mode: ExecutionSummary['mode']) {
     switch (mode) {
-        case 'dry_run':
-            return 'Dry Run';
         case 'go_live':
             return 'Go Live';
         case 'end_stream':
@@ -105,8 +103,6 @@ function logActionLabel(action: string) {
     switch (action) {
         case 'generate_preview':
             return 'Preview';
-        case 'dry_run':
-            return 'Dry Run';
         case 'go_live':
             return 'Go Live';
         case 'force_go_live':
@@ -199,6 +195,92 @@ function toMaskedDestinationForm(form: DestinationFormState): DestinationFormSta
     };
 }
 
+function applyAnnouncementDefaults(announcement: AnnouncementInput, settings: AppSettings): AnnouncementInput {
+    return {
+        ...announcement,
+        streamURL: announcement.streamURL.trim() === '' ? settings.defaultStreamURL : announcement.streamURL,
+        hashtags: announcement.hashtags.trim() === '' ? settings.defaultHashtags : announcement.hashtags,
+    };
+}
+
+function asArray<T>(value: T[] | null | undefined): T[] {
+    return Array.isArray(value) ? value : [];
+}
+
+const BLUESKY_CARD_THUMBNAIL_MAX_BYTES = 1_000_000;
+const BLUESKY_CARD_THUMBNAIL_MAX_EDGE = 1200;
+
+function fileToDataURL(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result ?? ''));
+        reader.onerror = () => reject(reader.error ?? new Error('Unable to read selected image.'));
+        reader.readAsDataURL(file);
+    });
+}
+
+function loadImage(dataURL: string): Promise<HTMLImageElement> {
+    return new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = () => reject(new Error('Unable to load selected image.'));
+        image.src = dataURL;
+    });
+}
+
+function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality: number): Promise<Blob> {
+    return new Promise((resolve, reject) => {
+        canvas.toBlob((blob) => {
+            if (blob) {
+                resolve(blob);
+                return;
+            }
+            reject(new Error('Unable to compress selected image.'));
+        }, type, quality);
+    });
+}
+
+function blobToDataURL(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result ?? ''));
+        reader.onerror = () => reject(reader.error ?? new Error('Unable to read compressed image.'));
+        reader.readAsDataURL(blob);
+    });
+}
+
+async function prepareBlueskyThumbnail(file: File): Promise<{ dataURL: string; compressed: boolean }> {
+    const original = await fileToDataURL(file);
+    if (file.size <= BLUESKY_CARD_THUMBNAIL_MAX_BYTES) {
+        return { dataURL: original, compressed: false };
+    }
+
+    const image = await loadImage(original);
+    const scale = Math.min(1, BLUESKY_CARD_THUMBNAIL_MAX_EDGE / Math.max(image.naturalWidth, image.naturalHeight));
+    const width = Math.max(1, Math.round(image.naturalWidth * scale));
+    const height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+
+    const context = canvas.getContext('2d');
+    if (!context) {
+        throw new Error('Unable to prepare selected image.');
+    }
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, width, height);
+    context.drawImage(image, 0, 0, width, height);
+
+    for (const quality of [0.9, 0.82, 0.74, 0.66, 0.58, 0.5]) {
+        const blob = await canvasToBlob(canvas, 'image/jpeg', quality);
+        if (blob.size <= BLUESKY_CARD_THUMBNAIL_MAX_BYTES) {
+            return { dataURL: await blobToDataURL(blob), compressed: true };
+        }
+    }
+
+    throw new Error('Card thumbnail is too large to compress below 1 MB.');
+}
+
 function credentialSetupLabel(platform: DestinationInput['platform']) {
     switch (platform) {
         case 'discord':
@@ -268,6 +350,14 @@ function destinationTemplateLabel(platform: DestinationInput['platform']) {
     return platform === 'bluesky' ? 'Post Template' : 'Template';
 }
 
+function destinationEnvironmentLabel(environment: DestinationFormState['environment']) {
+    return environment === 'test' ? 'Test' : 'Production';
+}
+
+function destinationEnvironmentFrom(destination: DestinationInput): DestinationFormState['environment'] {
+    return toDestinationFormState(destination).environment;
+}
+
 function App() {
     const [selectedTab, setSelectedTab] = useState<TabKey>('home');
 
@@ -278,7 +368,7 @@ function App() {
     const [previewLoading, setPreviewLoading] = useState(false);
     const [executionSummary, setExecutionSummary] = useState<ExecutionSummary | null>(null);
     const [executionError, setExecutionError] = useState<string | null>(null);
-    const [executionLoading, setExecutionLoading] = useState<'dry_run' | 'go_live' | 'end_stream' | null>(null);
+    const [executionLoading, setExecutionLoading] = useState<'go_live' | 'end_stream' | null>(null);
     const [pendingGoLiveConfirmation, setPendingGoLiveConfirmation] = useState(false);
     const [pendingLiveNowSessions, setPendingLiveNowSessions] = useState<ActiveLiveNowSession[]>([]);
     const [recoveryStatus, setRecoveryStatus] = useState<string | null>(null);
@@ -311,6 +401,7 @@ function App() {
     const [logsError, setLogsError] = useState<string | null>(null);
     const [diagnosticsStatus, setDiagnosticsStatus] = useState<string | null>(null);
     const initializedSelection = useRef(false);
+    const blueskyThumbnailInputRef = useRef<HTMLInputElement | null>(null);
 
     useEffect(() => {
         void refreshDestinations();
@@ -333,9 +424,9 @@ function App() {
     async function refreshDestinations() {
         try {
             const items = await listDestinations();
-            setDestinations(items);
+            setDestinations(asArray(items));
         } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : 'Unable to load destinations.';
+            const message = errorMessage(err, 'Unable to load destinations.');
             setDestinationError(message);
         }
     }
@@ -345,8 +436,9 @@ function App() {
             const current = await getSettings();
             setSettingsSecrets(settingsSecretCacheFrom(current));
             setSettings(toMaskedSettings(current));
+            setAnnouncement((existing) => applyAnnouncementDefaults(existing, current));
         } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : 'Unable to load settings.';
+            const message = errorMessage(err, 'Unable to load settings.');
             setSettingsError(message);
         }
     }
@@ -354,9 +446,9 @@ function App() {
     async function refreshLogs() {
         try {
             const entries = await getLogs();
-            setLogs(entries);
+            setLogs(asArray(entries));
         } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : 'Unable to load logs.';
+            const message = errorMessage(err, 'Unable to load logs.');
             setLogsError(message);
         }
     }
@@ -364,9 +456,9 @@ function App() {
     async function refreshPendingLiveNowSessions() {
         try {
             const sessions = await listPendingLiveNowSessions();
-            setPendingLiveNowSessions(sessions);
+            setPendingLiveNowSessions(asArray(sessions));
         } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : 'Unable to load pending Live Now sessions.';
+            const message = errorMessage(err, 'Unable to load pending Live Now sessions.');
             setRecoveryError(message);
         }
     }
@@ -384,9 +476,9 @@ function App() {
             }
 
             const preview = await generatePreview(announcement, selectedDestinationIDs);
-            setPreviewItems(preview);
+            setPreviewItems(asArray(preview));
         } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : 'Unable to generate previews.';
+            const message = errorMessage(err, 'Unable to generate previews.');
             setPreviewError(message);
             setPreviewItems([]);
         } finally {
@@ -394,8 +486,8 @@ function App() {
         }
     }
 
-    async function runExecution(mode: 'dry_run' | 'go_live') {
-        setExecutionLoading(mode);
+    async function runGoLive() {
+        setExecutionLoading('go_live');
         setExecutionError(null);
 
         try {
@@ -406,8 +498,8 @@ function App() {
                 return;
             }
 
-            const summary = mode === 'dry_run' ? await dryRun(announcement, selectedDestinationIDs) : await goLive(announcement, selectedDestinationIDs);
-            if (mode === 'go_live' && summary.requiresDuplicateConfirmation) {
+            const summary = await goLive(announcement, selectedDestinationIDs);
+            if (summary.requiresDuplicateConfirmation) {
                 setPendingGoLiveConfirmation(true);
                 setExecutionSummary(summary);
                 return;
@@ -415,7 +507,7 @@ function App() {
             setPendingGoLiveConfirmation(false);
             setExecutionSummary(summary);
         } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : 'Unable to run execution.';
+            const message = errorMessage(err, 'Unable to run execution.');
             setExecutionError(message);
             setExecutionSummary(null);
             setPendingGoLiveConfirmation(false);
@@ -432,7 +524,7 @@ function App() {
             setPendingGoLiveConfirmation(false);
             setExecutionSummary(summary);
         } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : 'Unable to confirm Go Live.';
+            const message = errorMessage(err, 'Unable to confirm Go Live.');
             setExecutionError(message);
         } finally {
             setExecutionLoading(null);
@@ -449,7 +541,7 @@ function App() {
             setExecutionSummary(summary);
             await refreshPendingLiveNowSessions();
         } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : 'Unable to end stream.';
+            const message = errorMessage(err, 'Unable to end stream.');
             setExecutionError(message);
         } finally {
             setExecutionLoading(null);
@@ -470,7 +562,7 @@ function App() {
             }
             await refreshPendingLiveNowSessions();
         } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : 'Unable to clear pending Live Now session.';
+            const message = errorMessage(err, 'Unable to clear pending Live Now session.');
             setRecoveryError(message);
         } finally {
             setRecoveryLoadingId(null);
@@ -497,7 +589,7 @@ function App() {
             setDestinationStatus('Destination saved.');
             await refreshDestinations();
         } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : 'Unable to save destination.';
+            const message = errorMessage(err, 'Unable to save destination.');
             setDestinationError(message);
         }
     }
@@ -518,7 +610,7 @@ function App() {
             const result = await testDestinationConnection(toDestinationInput(resolvedForm));
             setDestinationConnectionResult(result);
         } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : 'Unable to test destination connection.';
+            const message = errorMessage(err, 'Unable to test destination connection.');
             setDestinationError(message);
         } finally {
             setDestinationConnectionLoading(false);
@@ -546,7 +638,7 @@ function App() {
             setDestinationStatus('Destination deleted.');
             await refreshDestinations();
         } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : 'Unable to delete destination.';
+            const message = errorMessage(err, 'Unable to delete destination.');
             setDestinationError(message);
         }
     }
@@ -566,9 +658,10 @@ function App() {
             const saved = await saveSettings(resolvedSettings);
             setSettingsSecrets(settingsSecretCacheFrom(saved));
             setSettings(toMaskedSettings(saved));
+            setAnnouncement((existing) => applyAnnouncementDefaults(existing, saved));
             setSettingsStatus('Settings saved.');
         } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : 'Unable to save settings.';
+            const message = errorMessage(err, 'Unable to save settings.');
             setSettingsError(message);
         }
     }
@@ -586,7 +679,7 @@ function App() {
                 setLogsError('Clipboard is unavailable in this environment.');
             }
         } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : 'Unable to copy diagnostics.';
+            const message = errorMessage(err, 'Unable to copy diagnostics.');
             setLogsError(message);
         }
     }
@@ -607,6 +700,46 @@ function App() {
         }));
     }
 
+    function clearBlueskyThumbnailImage() {
+        if (blueskyThumbnailInputRef.current) {
+            blueskyThumbnailInputRef.current.value = '';
+        }
+        updateDestination('blueskyCardThumbnailDataURL', '');
+    }
+
+    async function onBlueskyThumbnailUpload(file: File | undefined) {
+        setDestinationConnectionResult(null);
+        setDestinationHelperStatus(null);
+        setDestinationError(null);
+
+        if (!file) {
+            return;
+        }
+        if (!file.type.startsWith('image/')) {
+            setDestinationError('Card thumbnail must be an image.');
+            return;
+        }
+
+        try {
+            const thumbnail = await prepareBlueskyThumbnail(file);
+            setDestinationForm((current) => ({
+                ...current,
+                blueskyCardThumbnailURL: '',
+                blueskyCardThumbnailDataURL: thumbnail.dataURL,
+            }));
+            if (blueskyThumbnailInputRef.current) {
+                blueskyThumbnailInputRef.current.value = '';
+            }
+            setDestinationHelperStatus(thumbnail.compressed ? `Selected and compressed ${file.name}` : `Selected ${file.name}`);
+        } catch (err: unknown) {
+            if (blueskyThumbnailInputRef.current) {
+                blueskyThumbnailInputRef.current.value = '';
+            }
+            const message = errorMessage(err, 'Unable to prepare selected image.');
+            setDestinationError(message);
+        }
+    }
+
     async function onCopyTemplateVariable(variable: string) {
         setDestinationHelperStatus(null);
         try {
@@ -617,7 +750,7 @@ function App() {
             }
             setDestinationHelperStatus('Clipboard is unavailable in this environment.');
         } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : 'Unable to copy template variable.';
+            const message = errorMessage(err, 'Unable to copy template variable.');
             setDestinationHelperStatus(message);
         }
     }
@@ -640,11 +773,6 @@ function App() {
 
     return (
         <main className="app-shell">
-            {settings.testModeEnabled ? (
-                <div className="test-mode-banner" role="status">
-                    TEST MODE ACTIVE
-                </div>
-            ) : null}
             <div className="app-frame">
                 <header className="panel app-header">
                     <div className="app-header-copy">
@@ -691,11 +819,23 @@ function App() {
                                             <h2>Live Session</h2>
                                             <p>Set up the announcement, validate it, then publish when you are ready.</p>
                                         </div>
-                                        <div className="home-status-inline">
-                                            {settings.testModeEnabled ? <span className="status-pill">Test Mode</span> : null}
-                                            {pendingLiveNowSessions.length > 0 ? (
-                                                <span className="status-pill">{pendingLiveNowSessions.length} recovery pending</span>
-                                            ) : null}
+                                        <div className="panel-header-actions">
+                                            <div className="home-status-inline">
+                                                {pendingLiveNowSessions.length > 0 ? (
+                                                    <span className="status-pill">{pendingLiveNowSessions.length} recovery pending</span>
+                                                ) : null}
+                                            </div>
+                                            <button
+                                                type="button"
+                                                className="ghost-button small-button"
+                                                onClick={() => {
+                                                    setAnnouncement(initialAnnouncement);
+                                                    setPreviewError(null);
+                                                    setPreviewItems([]);
+                                                }}
+                                            >
+                                                Reset
+                                            </button>
                                         </div>
                                     </div>
 
@@ -761,7 +901,6 @@ function App() {
                                                         {configuredDestinationCount === 0
                                                             ? 'Add destinations in the Destinations tab first.'
                                                             : `${selectedDestinationCount} of ${configuredDestinationCount} selected for this session.`}
-                                                        {settings.testModeEnabled && configuredDestinationCount > 0 ? ' Test Mode will reroute live posting to your test credentials.' : ''}
                                                         {pendingLiveNowSessions.length > 0 ? ` ${pendingLiveNowSessions.length} Live Now recovery item${pendingLiveNowSessions.length === 1 ? ' is' : 's are'} still pending.` : ''}
                                                     </p>
                                                 </div>
@@ -797,7 +936,9 @@ function App() {
                                                             />
                                                             <span className="session-destination-copy">
                                                                 <strong>{destination.name}</strong>
-                                                                <small>{destination.platform}</small>
+                                                                <small>
+                                                                    {destination.platform} · {destinationEnvironmentLabel(destinationEnvironmentFrom(destination))}
+                                                                </small>
                                                             </span>
                                                         </label>
                                                     ))}
@@ -806,54 +947,25 @@ function App() {
                                         </section>
 
                                         <div className="workflow-actions">
-                                            <div className="workflow-action-group">
-                                                <span className="workflow-label">Prepare</span>
-                                                <div className="action-cluster-main">
-                                                    <button type="submit" className="primary-button" disabled={previewLoading}>
-                                                        {previewLoading ? 'Generating...' : 'Generate Preview'}
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        className="ghost-button"
-                                                        onClick={() => void runExecution('dry_run')}
-                                                        disabled={executionLoading !== null}
-                                                    >
-                                                        {executionLoading === 'dry_run' ? 'Running Dry Run...' : 'Dry Run'}
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        className="ghost-button"
-                                                        onClick={() => {
-                                                            setAnnouncement(initialAnnouncement);
-                                                            setPreviewError(null);
-                                                            setPreviewItems([]);
-                                                        }}
-                                                    >
-                                                        Reset
-                                                    </button>
-                                                </div>
-                                            </div>
-                                            <div className="workflow-action-group workflow-action-group-live">
-                                                <span className="workflow-label">Commit</span>
-                                                <div className="action-cluster-secondary">
-                                                    <button
-                                                        type="button"
-                                                        className="primary-button"
-                                                        onClick={() => void runExecution('go_live')}
-                                                        disabled={executionLoading !== null}
-                                                    >
-                                                        {executionLoading === 'go_live' ? 'Running Go Live...' : 'Go Live'}
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        className="ghost-button"
-                                                        onClick={() => void onEndStream()}
-                                                        disabled={executionLoading !== null}
-                                                    >
-                                                        {executionLoading === 'end_stream' ? 'Ending Stream...' : 'End Stream'}
-                                                    </button>
-                                                </div>
-                                            </div>
+                                            <button type="submit" className="primary-button" disabled={previewLoading}>
+                                                {previewLoading ? 'Generating...' : 'Generate Preview'}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="primary-button"
+                                                onClick={() => void runGoLive()}
+                                                disabled={executionLoading !== null}
+                                            >
+                                                {executionLoading === 'go_live' ? 'Running Go Live...' : 'Go Live'}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="ghost-button"
+                                                onClick={() => void onEndStream()}
+                                                disabled={executionLoading !== null}
+                                            >
+                                                {executionLoading === 'end_stream' ? 'Ending Stream...' : 'End Stream'}
+                                            </button>
                                         </div>
                                     </form>
                                 </article>
@@ -929,17 +1041,6 @@ function App() {
                                     <p>{executionStatusMessage(executionSummary)}</p>
                                 </div>
                             ) : null}
-                            {executionSummary?.testModeActive ? (
-                                <div className="warning-banner">
-                                    <p>
-                                        {executionSummary.mode === 'dry_run'
-                                            ? 'Test Mode is active. Any live execution would be routed to test targets instead of production destinations.'
-                                            : executionSummary.mode === 'end_stream'
-                                              ? 'Test Mode routing was active. Any optional end-stream posts used test targets instead of production destinations.'
-                                              : 'Test Mode routing was active. Production destinations were not used for this execution.'}
-                                    </p>
-                                </div>
-                            ) : null}
                             {pendingGoLiveConfirmation ? (
                                 <div className="warning-banner">
                                     <p>{executionSummary?.duplicateWarningMessage}</p>
@@ -958,7 +1059,7 @@ function App() {
                             {!executionSummary ? (
                                 <div className="empty-state">
                                     <h3>No execution results yet</h3>
-                                    <p>Run Dry Run, Go Live, or End Stream to see per-destination execution results.</p>
+                                    <p>Run Go Live or End Stream to see per-destination execution results.</p>
                                 </div>
                             ) : (
                                 <>
@@ -1018,18 +1119,6 @@ function App() {
                                 <article className="panel panel-wide">
                                     <div className="panel-header">
                                         <div>
-                                            <h2>Destinations</h2>
-                                            <p>Connect each platform once, test the credentials, and reuse them for every stream.</p>
-                                        </div>
-                                        <span>{destinations.length} configured</span>
-                                    </div>
-                                    {destinationError ? <p className="error-banner">{destinationError}</p> : null}
-                                    {destinationStatus ? <p className="success-banner">{destinationStatus}</p> : null}
-                                </article>
-
-                                <article className="panel panel-wide">
-                                    <div className="panel-header">
-                                        <div>
                                             <h2>Saved Destinations</h2>
                                             <p>Pick one to edit, or start a fresh destination setup.</p>
                                         </div>
@@ -1053,6 +1142,8 @@ function App() {
                                             </button>
                                         </div>
                                     </div>
+                                    {destinationError ? <p className="error-banner">{destinationError}</p> : null}
+                                    {destinationStatus ? <p className="success-banner">{destinationStatus}</p> : null}
 
                                     <div className="saved-destinations-grid">
                                         {destinations.length === 0 ? (
@@ -1074,7 +1165,9 @@ function App() {
                                                     }}
                                                 >
                                                     <strong>{item.name}</strong>
-                                                    <span>{item.platform}</span>
+                                                    <span>
+                                                        {item.platform} · {destinationEnvironmentLabel(destinationEnvironmentFrom(item))}
+                                                    </span>
                                                 </button>
                                             ))
                                         )}
@@ -1113,6 +1206,7 @@ function App() {
                                                 ...createEmptyDestinationForm(event.target.value as DestinationInput['platform']),
                                                 id: current.id,
                                                 name: current.name,
+                                                environment: current.environment,
                                                 createdAt: current.createdAt,
                                                 updatedAt: current.updatedAt,
                                             }));
@@ -1132,6 +1226,18 @@ function App() {
                                         onChange={(event) => updateDestination('name', event.target.value)}
                                         placeholder="Main Discord"
                                     />
+                                </label>
+
+                                <label className="field">
+                                    <span>Destination Type</span>
+                                    <select
+                                        aria-label="Destination Type"
+                                        value={destinationForm.environment}
+                                        onChange={(event) => updateDestination('environment', event.target.value as DestinationFormState['environment'])}
+                                    >
+                                        <option value="production">Production</option>
+                                        <option value="test">Test</option>
+                                    </select>
                                 </label>
 
                                 </div>
@@ -1220,7 +1326,7 @@ function App() {
                                                 aria-label="Account Identifier"
                                                 value={destinationForm.blueskyAccountIdentifier}
                                                 onChange={(event) => updateDestination('blueskyAccountIdentifier', event.target.value)}
-                                                placeholder="don.test"
+                                                placeholder="handle.bsky.social"
                                             />
                                         </label>
                                         <label className="field">
@@ -1242,6 +1348,54 @@ function App() {
                                                 rows={4}
                                             />
                                         </label>
+                                        <label className="field">
+                                            <span>Live Now Duration (Minutes)</span>
+                                            <input
+                                                aria-label="Live Now Duration (Minutes)"
+                                                type="number"
+                                                min="1"
+                                                value={destinationForm.blueskyLiveNowDurationMinutes}
+                                                onChange={(event) => updateDestination('blueskyLiveNowDurationMinutes', event.target.value)}
+                                                placeholder="120"
+                                            />
+                                        </label>
+                                        <label className="field">
+                                            <span>Card Thumbnail URL</span>
+                                            <input
+                                                aria-label="Card Thumbnail URL"
+                                                value={destinationForm.blueskyCardThumbnailURL}
+                                                onChange={(event) => {
+                                                    updateDestination('blueskyCardThumbnailURL', event.target.value);
+                                                    if (event.target.value.trim() !== '') {
+                                                        clearBlueskyThumbnailImage();
+                                                    }
+                                                }}
+                                                placeholder="https://static-cdn.jtvnw.net/..."
+                                            />
+                                        </label>
+                                        <label className="field">
+                                            <span>Card Thumbnail Image</span>
+                                            <input
+                                                ref={blueskyThumbnailInputRef}
+                                                aria-label="Card Thumbnail Image"
+                                                type="file"
+                                                accept="image/*"
+                                                onChange={(event) => void onBlueskyThumbnailUpload(event.target.files?.[0])}
+                                            />
+                                            <small>Large images are resized for Bluesky before posting.</small>
+                                        </label>
+                                        {destinationForm.blueskyCardThumbnailDataURL ? (
+                                            <div className="form-actions">
+                                                <span>Uploaded thumbnail selected</span>
+                                                <button
+                                                    type="button"
+                                                    className="ghost-button"
+                                                    onClick={clearBlueskyThumbnailImage}
+                                                >
+                                                    Clear Image
+                                                </button>
+                                            </div>
+                                        ) : null}
                                     </>
                                 ) : null}
 
@@ -1364,71 +1518,11 @@ function App() {
                                 <section className="two-column-layout">
                                     <article className="panel">
                                         <section className="mini-panel">
-                                            <h3>Test Mode Credentials</h3>
-                                            <p>These optional values are only used when Test Mode is enabled. They are stored in Windows Credential Manager, separate from your normal posting destinations.</p>
+                                            <h3>App Defaults</h3>
+                                            <p>Use test destinations in the Destinations tab when you want to publish to test accounts or channels.</p>
                                         </section>
 
                                         <form className="announcement-form settings-grid" onSubmit={onSettingsSubmit}>
-                            <label className="field checkbox-field">
-                                <input
-                                    aria-label="Test Mode Enabled"
-                                    type="checkbox"
-                                    checked={settings.testModeEnabled}
-                                    onChange={(event) => updateSettings('testModeEnabled', event.target.checked)}
-                                />
-                                <span>Test Mode Enabled</span>
-                            </label>
-
-                            <label className="field">
-                                <span>Test Discord Webhook URL</span>
-                                <input
-                                    aria-label="Test Discord Webhook URL"
-                                    value={settings.testDiscordWebhookKey}
-                                    onChange={(event) => updateSettings('testDiscordWebhookKey', event.target.value)}
-                                    placeholder="https://discord.com/api/webhooks/..."
-                                />
-                            </label>
-
-                            <label className="field">
-                                <span>Test Bluesky Account Identifier</span>
-                                <input
-                                    aria-label="Test Bluesky Account Identifier"
-                                    value={settings.testBlueskyAccountIdentifier}
-                                    onChange={(event) => updateSettings('testBlueskyAccountIdentifier', event.target.value)}
-                                    placeholder="don.test"
-                                />
-                            </label>
-
-                            <label className="field">
-                                <span>Test Bluesky App Password</span>
-                                <input
-                                    aria-label="Test Bluesky App Password"
-                                    value={settings.testBlueskyCredentialKey}
-                                    onChange={(event) => updateSettings('testBlueskyCredentialKey', event.target.value)}
-                                    placeholder="xxxx-xxxx-xxxx-xxxx"
-                                />
-                            </label>
-
-                            <label className="field">
-                                <span>Test Mastodon Access Token</span>
-                                <input
-                                    aria-label="Test Mastodon Access Token"
-                                    value={settings.testMastodonCredentialKey}
-                                    onChange={(event) => updateSettings('testMastodonCredentialKey', event.target.value)}
-                                    placeholder="Paste Mastodon access token"
-                                />
-                            </label>
-
-                            <label className="field">
-                                <span>Test Mastodon Instance URL</span>
-                                <input
-                                    aria-label="Test Mastodon Instance URL"
-                                    value={settings.testMastodonInstanceURL}
-                                    onChange={(event) => updateSettings('testMastodonInstanceURL', event.target.value)}
-                                    placeholder="https://mastodon.test"
-                                />
-                            </label>
-
                             <label className="field checkbox-field">
                                 <input
                                     aria-label="Duplicate Protection Enabled"

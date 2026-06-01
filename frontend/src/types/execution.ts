@@ -8,7 +8,7 @@ export interface ExecutionResult {
 }
 
 export interface ExecutionSummary {
-    mode: 'dry_run' | 'go_live' | 'end_stream';
+    mode: 'go_live' | 'end_stream';
     status: 'SUCCESS' | 'WARNING' | 'PARTIAL';
     testModeActive: boolean;
     results: ExecutionResult[];

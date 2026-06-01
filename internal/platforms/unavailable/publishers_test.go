@@ -24,7 +24,7 @@ func TestUnavailablePublishersReturnIntegrationUnavailableErrors(t *testing.T) {
 			name:     "bluesky",
 			platform: domain.PlatformBluesky,
 			call: func() error {
-				return (BlueskyPublisher{}).PublishPost(context.Background(), "account", "credential", "hello")
+				return (BlueskyPublisher{}).PublishPost(context.Background(), "account", "credential", "hello", domain.BlueskyPostMetadata{})
 			},
 		},
 		{

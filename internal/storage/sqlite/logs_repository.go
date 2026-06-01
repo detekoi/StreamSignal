@@ -43,7 +43,7 @@ limit ?`, limit)
 	}
 	defer rows.Close()
 
-	var entries []domain.LogEntry
+	entries := make([]domain.LogEntry, 0)
 	for rows.Next() {
 		var entry domain.LogEntry
 		var timestamp string

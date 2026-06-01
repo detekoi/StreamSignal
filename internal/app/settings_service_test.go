@@ -72,17 +72,21 @@ func TestSettingsServiceSaveRequiresEndStreamTemplateWhenEnabled(t *testing.T) {
 	}
 }
 
-func TestSettingsServiceSaveRequiresTestTargetsWhenTestModeEnabled(t *testing.T) {
+func TestSettingsServiceSaveAllowsPartialTestModeCredentials(t *testing.T) {
 	repository := &settingsRepositoryStub{}
 	service := NewSettingsService(repository)
 
-	_, err := service.Save(context.Background(), domain.AppSettings{
-		TestModeEnabled:            true,
-		DuplicateProtectionEnabled: true,
-		DuplicateWindowMinutes:     10,
-	})
-	if err == nil {
-		t.Fatal("expected validation error")
+	settings := domain.DefaultAppSettings()
+	settings.TestModeEnabled = true
+	settings.TestBlueskyAccountIdentifier = "streamsignal-test.bsky.social"
+	settings.TestBlueskyCredentialKey = "bluesky/test"
+
+	actual, err := service.Save(context.Background(), settings)
+	if err != nil {
+		t.Fatalf("save settings: %v", err)
+	}
+	if actual != settings {
+		t.Fatalf("expected settings %+v, got %+v", settings, actual)
 	}
 }
 

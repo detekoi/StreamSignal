@@ -73,7 +73,6 @@ func TestDiagnosticsServiceBuildIncludesSafeSummary(t *testing.T) {
 
 	for _, expected := range []string{
 		"StreamSignal Diagnostics",
-		"Test Mode Enabled: true",
 		"End Stream Post Enabled: false",
 		"Destinations Configured: 1",
 		"Pending Live Now Sessions: 1",

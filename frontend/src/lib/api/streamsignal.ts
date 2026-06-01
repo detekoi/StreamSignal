@@ -1,7 +1,6 @@
 import {
     ClearPendingLiveNowSession,
     DeleteDestination,
-    DryRun,
     EndStream,
     ForceGoLive,
     GeneratePreview,
@@ -31,12 +30,27 @@ function toAnnouncementModel(announcement: AnnouncementInput, destinationIDs: st
     } as unknown as domain.Announcement;
 }
 
+function asArray<T>(value: T[] | null | undefined): T[] {
+    return Array.isArray(value) ? value : [];
+}
+
 function toDestinationModel(destination: DestinationInput): domain.Destination {
+    const { createdAt, updatedAt, ...rest } = destination;
     return domain.Destination.createFrom({
-        ...destination,
-        ...(destination.createdAt ? { createdAt: destination.createdAt } : {}),
-        ...(destination.updatedAt ? { updatedAt: destination.updatedAt } : {}),
+        ...rest,
+        ...(createdAt ? { createdAt } : {}),
+        ...(updatedAt ? { updatedAt } : {}),
     });
+}
+
+export function errorMessage(err: unknown, fallback: string): string {
+    if (err instanceof Error) {
+        return err.message;
+    }
+    if (typeof err === 'string') {
+        return err;
+    }
+    return fallback;
 }
 
 function toExecutionResult(result: domain.ExecutionResult): ExecutionResult {
@@ -55,7 +69,7 @@ function toExecutionSummary(summary: domain.ExecutionSummary): ExecutionSummary 
         mode: summary.mode as ExecutionSummary['mode'],
         status: summary.status as ExecutionSummary['status'],
         testModeActive: summary.testModeActive,
-        results: summary.results.map(toExecutionResult),
+        results: asArray(summary.results).map(toExecutionResult),
         totalCount: summary.totalCount,
         successCount: summary.successCount,
         failedCount: summary.failedCount,
@@ -118,7 +132,7 @@ function toPreviewItem(item: domain.PreviewItem): PreviewItem {
         content: item.content,
         characterCount: item.characterCount,
         validationState: item.validationState,
-        validationNotes: item.validationNotes,
+        validationNotes: asArray(item.validationNotes),
     };
 }
 
@@ -127,7 +141,7 @@ function toSettingsModel(settings: AppSettings): domain.AppSettings {
 }
 
 export function getLogs(): Promise<LogEntry[]> {
-    return GetLogs().then((entries: domain.LogEntry[]) => entries.map(toLogEntry));
+    return GetLogs().then((entries: domain.LogEntry[] | null) => asArray(entries).map(toLogEntry));
 }
 
 export function getDiagnostics(): Promise<string> {
@@ -135,11 +149,7 @@ export function getDiagnostics(): Promise<string> {
 }
 
 export function generatePreview(announcement: AnnouncementInput, destinationIDs: string[] = []): Promise<PreviewItem[]> {
-    return GeneratePreview(toAnnouncementModel(announcement, destinationIDs)).then((items: domain.PreviewItem[]) => items.map(toPreviewItem));
-}
-
-export function dryRun(announcement: AnnouncementInput, destinationIDs: string[] = []): Promise<ExecutionSummary> {
-    return DryRun(toAnnouncementModel(announcement, destinationIDs)).then(toExecutionSummary);
+    return GeneratePreview(toAnnouncementModel(announcement, destinationIDs)).then((items: domain.PreviewItem[] | null) => asArray(items).map(toPreviewItem));
 }
 
 export function goLive(announcement: AnnouncementInput, destinationIDs: string[] = []): Promise<ExecutionSummary> {
@@ -155,7 +165,7 @@ export function endStream(): Promise<ExecutionSummary> {
 }
 
 export function listPendingLiveNowSessions(): Promise<ActiveLiveNowSession[]> {
-    return ListPendingLiveNowSessions().then((sessions: domain.ActiveLiveNowSession[]) => sessions.map(toActiveLiveNowSession));
+    return ListPendingLiveNowSessions().then((sessions: domain.ActiveLiveNowSession[] | null) => asArray(sessions).map(toActiveLiveNowSession));
 }
 
 export function clearPendingLiveNowSession(destinationID: string): Promise<LiveNowRecoveryResult> {
@@ -163,7 +173,7 @@ export function clearPendingLiveNowSession(destinationID: string): Promise<LiveN
 }
 
 export function listDestinations(): Promise<DestinationInput[]> {
-    return ListDestinations().then((destinations: domain.Destination[]) => destinations.map(toDestinationInput));
+    return ListDestinations().then((destinations: domain.Destination[] | null) => asArray(destinations).map(toDestinationInput));
 }
 
 export function saveDestination(destination: DestinationInput): Promise<DestinationInput> {

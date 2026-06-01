@@ -2,7 +2,9 @@
 
 ## Scope
 
-This document records the first public-facing Milestone 9 security summary for StreamSignal as of May 31, 2026.
+This document records the public-facing security summary for StreamSignal.
+
+Latest review: June 1, 2026.
 
 Review focus:
 
@@ -14,7 +16,7 @@ Review focus:
 
 ## Executive Summary
 
-The highest-severity issue found in this pass was that secret values could previously be persisted directly in SQLite through destination configuration, Test Mode settings, and restart-safe Bluesky `Live Now` session tracking.
+The highest-severity issue found in this pass was that secret values could previously be persisted directly in SQLite through destination configuration, legacy test credential settings, and restart-safe Bluesky `Live Now` session tracking.
 
 That issue has been remediated:
 
@@ -34,7 +36,7 @@ Severity:
 Affected areas at the time of review:
 
 - destination `config_json`
-- Test Mode credential settings
+- legacy test credential settings
 - `bluesky_live_now_sessions.credential_key`
 
 Why it mattered:
@@ -94,7 +96,34 @@ Result:
 - all default HTTP clients use explicit `10s` timeouts
 - error responses are read with bounded body limits rather than unbounded reads
 
-### Validated: frontend production dependency audit is clean
+### Fixed: frontend build tooling had vulnerable dev dependencies
+
+Severity:
+
+- medium
+
+What was checked:
+
+- `npm audit`
+- `npm outdated`
+
+Finding:
+
+- the previous frontend toolchain pulled vulnerable `esbuild` versions through old Vite and Vitest packages
+- the issue affected local development/build tooling, not shipped runtime React dependencies
+
+Remediation:
+
+- upgraded Vite, the Vite React plugin, Vitest, V8 coverage, jsdom, and TypeScript
+- updated TypeScript module-resolution settings for the newer toolchain
+- changed the GitHub quality gate from production-only npm audit to full `npm audit`
+
+Validation on June 1, 2026:
+
+- `npm audit` reported `0` vulnerabilities
+- remaining npm outdated entries are React 18 to React 19 migration items, not security fixes
+
+### Fixed: Go vulnerability scan reported a non-reachable vulnerable module
 
 Severity:
 
@@ -102,13 +131,22 @@ Severity:
 
 What was checked:
 
-- `npm audit --omit=dev --json`
+- `govulncheck -show verbose ./...`
 
-Result on May 31, 2026:
+Finding:
 
-- `0` production vulnerabilities reported
+- `golang.org/x/sys v0.34.0` was present with GO-2026-5024
+- govulncheck reported no reachable vulnerable symbols in StreamSignal code
 
-### Improved: Go dependency vulnerability scanning is now part of the quality gate
+Remediation:
+
+- upgraded `golang.org/x/sys` to `v0.44.0`, the fixed version reported by govulncheck
+
+Validation on June 1, 2026:
+
+- `govulncheck ./...` reported no vulnerabilities
+
+### Improved: Go dependency vulnerability scanning is part of the quality gate
 
 Status:
 
@@ -125,7 +163,7 @@ Severity:
 
 What changed:
 
-- destination and Test Mode secret inputs now render as a stable masked token instead of hydrating the live secret back into the visible form
+- destination secret inputs now render as a stable masked token instead of hydrating the live secret back into the visible form
 - unchanged masked inputs preserve the stored secret on save
 - replacing or clearing a secret still works through the existing save flow
 
@@ -134,6 +172,33 @@ Assessment:
 - this is a safer default for a local-first desktop app
 - it reduces casual secret exposure during ordinary configuration edits
 - users still retain full control to replace or remove stored secrets when needed
+
+### Reviewed: Bluesky rich cards and thumbnail uploads
+
+Severity:
+
+- low
+
+What was checked:
+
+- direct card-thumbnail URL handling
+- local image upload handling
+- frontend resizing before save
+- backend thumbnail fetch, decode, and upload limits
+- diagnostics and logging around destination configuration
+
+Result:
+
+- thumbnail URLs must be valid HTTP or HTTPS URLs before fetch
+- fetched thumbnails use the existing HTTP timeout and bounded reads
+- uploaded thumbnail data must be an image data URL and is rejected before decode if the encoded payload is too large
+- decoded and fetched thumbnails are limited to Bluesky's current 1 MB blob size expectation
+- thumbnail data is not a credential secret and is not exported through diagnostics, but it is stored locally in destination configuration when a local image is selected
+
+Residual caution:
+
+- local thumbnail images can still be personal content, so users should treat the local StreamSignal database as private application data
+- if StreamSignal ever accepts remote or shared configuration from untrusted users, thumbnail URL fetching should be revisited as a stricter SSRF boundary
 
 ## OWASP Alignment Notes
 
@@ -152,5 +217,5 @@ This pass especially aligns with:
 ## Follow-Up Recommendations
 
 1. consider whether diagnostics export needs multiple redaction tiers before broader release
-2. continue reviewing Test Mode, recovery, and outbound adapters whenever new platforms or workflows are added
+2. continue reviewing destination targeting, recovery, and outbound adapters whenever new platforms or workflows are added
 3. keep the Go toolchain and GitHub Action versions current as part of regular maintenance

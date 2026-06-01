@@ -31,6 +31,7 @@ type blueskyPublisherStub struct {
 		identifier string
 		key        string
 		content    string
+		metadata   domain.BlueskyPostMetadata
 	}
 	liveNowSetCalls []struct {
 		identifier string
@@ -46,12 +47,13 @@ type blueskyPublisherStub struct {
 	liveNowClearErr error
 }
 
-func (s *blueskyPublisherStub) PublishPost(_ context.Context, accountIdentifier string, credentialKey string, content string) error {
+func (s *blueskyPublisherStub) PublishPost(_ context.Context, accountIdentifier string, credentialKey string, content string, metadata domain.BlueskyPostMetadata) error {
 	s.calls = append(s.calls, struct {
 		identifier string
 		key        string
 		content    string
-	}{accountIdentifier, credentialKey, content})
+		metadata   domain.BlueskyPostMetadata
+	}{accountIdentifier, credentialKey, content, metadata})
 	return s.err
 }
 
@@ -145,94 +147,6 @@ func (unavailableDiscordPublisherStub) Publish(context.Context, string, string) 
 	}
 }
 
-func TestExecutionServiceDryRunDoesNotCallPublishers(t *testing.T) {
-	destRepo := newDestinationRepositoryStub()
-	destRepo.items["discord-main"] = domain.Destination{
-		ID:         "discord-main",
-		Platform:   domain.PlatformDiscord,
-		Name:       "Main Discord",
-		Enabled:    true,
-		Template:   "{{stream_title}}",
-		ConfigJSON: `{"webhookKey":"https://discord.com/api/webhooks/123/main"}`,
-	}
-	settingsRepo := &settingsRepositoryStub{item: domain.DefaultAppSettings()}
-	history := &postHistoryRepositoryStub{recordsByDestination: map[string][]ports.PostHistoryRecord{}}
-	sessions := &liveNowSessionRepositoryExecutionStub{}
-	discord := &discordPublisherStub{}
-	bluesky := &blueskyPublisherStub{}
-	mastodon := &mastodonPublisherStub{}
-	service := NewExecutionService(destRepo, settingsRepo, history, sessions, discord, bluesky, mastodon)
-	service.clock = fixedClock{now: time.Date(2026, 5, 31, 18, 0, 0, 0, time.UTC)}
-
-	summary, err := service.DryRun(context.Background(), domain.Announcement{
-		StreamTitle: "Going Live",
-		StreamURL:   "https://example.com/live",
-	})
-	if err != nil {
-		t.Fatalf("dry run: %v", err)
-	}
-
-	if len(discord.calls) != 0 || len(bluesky.calls) != 0 || len(mastodon.calls) != 0 {
-		t.Fatal("expected dry run not to call publishers")
-	}
-	if len(bluesky.liveNowSetCalls) != 0 || len(bluesky.liveNowClearCalls) != 0 {
-		t.Fatal("expected dry run not to touch Bluesky Live Now")
-	}
-	if len(summary.Results) != 1 || summary.Results[0].State != domain.ExecutionStateSuccess {
-		t.Fatalf("unexpected dry run results: %+v", summary.Results)
-	}
-	if summary.TotalCount != 1 || summary.SuccessCount != 1 || summary.FailedCount != 0 || summary.ValidationErrorCount != 0 {
-		t.Fatalf("unexpected dry run summary counts: %+v", summary)
-	}
-	if summary.Status != domain.ExecutionSummaryStatusSuccess {
-		t.Fatalf("expected success summary status, got %+v", summary)
-	}
-}
-
-func TestExecutionServiceDryRunUsesSelectedDestinations(t *testing.T) {
-	destRepo := newDestinationRepositoryStub()
-	destRepo.listItems = []domain.Destination{
-		{
-			ID:         "discord-main",
-			Platform:   domain.PlatformDiscord,
-			Name:       "Main Discord",
-			Enabled:    true,
-			Template:   "{{stream_title}}",
-			ConfigJSON: `{"webhookKey":"https://discord.com/api/webhooks/123/main"}`,
-		},
-		{
-			ID:         "bluesky-main",
-			Platform:   domain.PlatformBluesky,
-			Name:       "Main Bluesky",
-			Enabled:    true,
-			Template:   "{{stream_title}}",
-			ConfigJSON: `{"accountIdentifier":"don.main","credentialKey":"bluesky/main"}`,
-		},
-	}
-	settingsRepo := &settingsRepositoryStub{item: domain.DefaultAppSettings()}
-	history := &postHistoryRepositoryStub{recordsByDestination: map[string][]ports.PostHistoryRecord{}}
-	sessions := &liveNowSessionRepositoryExecutionStub{}
-	discord := &discordPublisherStub{}
-	bluesky := &blueskyPublisherStub{}
-	mastodon := &mastodonPublisherStub{}
-	service := NewExecutionService(destRepo, settingsRepo, history, sessions, discord, bluesky, mastodon)
-
-	summary, err := service.DryRun(context.Background(), domain.Announcement{
-		StreamTitle:    "Going Live",
-		DestinationIDs: []string{"bluesky-main"},
-	})
-	if err != nil {
-		t.Fatalf("dry run: %v", err)
-	}
-
-	if len(summary.Results) != 1 {
-		t.Fatalf("expected 1 selected result, got %d", len(summary.Results))
-	}
-	if summary.Results[0].DestinationID != "bluesky-main" {
-		t.Fatalf("expected selected Bluesky destination, got %+v", summary.Results[0])
-	}
-}
-
 func TestExecutionServiceGoLiveIsolatesDestinationFailures(t *testing.T) {
 	destRepo := newDestinationRepositoryStub()
 	destRepo.listItems = []domain.Destination{
@@ -285,6 +199,9 @@ func TestExecutionServiceGoLiveIsolatesDestinationFailures(t *testing.T) {
 	if len(bluesky.liveNowSetCalls) != 1 {
 		t.Fatalf("expected bluesky live now set call, got %d", len(bluesky.liveNowSetCalls))
 	}
+	if bluesky.liveNowSetCalls[0].status.DurationMinutes != defaultBlueskyLiveNowDurationMinutes {
+		t.Fatalf("expected default live now duration, got %+v", bluesky.liveNowSetCalls[0].status)
+	}
 	if len(sessions.upserts) != 1 || sessions.upserts[0].DestinationID != "bluesky-main" {
 		t.Fatalf("expected tracked live now session, got %+v", sessions.upserts)
 	}
@@ -311,12 +228,12 @@ func TestExecutionServiceReturnsValidationErrorsPerDestination(t *testing.T) {
 	service := NewExecutionService(destRepo, settingsRepo, history, &liveNowSessionRepositoryExecutionStub{}, &discordPublisherStub{}, &blueskyPublisherStub{}, &mastodonPublisherStub{})
 	service.clock = fixedClock{now: time.Date(2026, 5, 31, 18, 0, 0, 0, time.UTC)}
 
-	summary, err := service.DryRun(context.Background(), domain.Announcement{
+	summary, err := service.GoLive(context.Background(), domain.Announcement{
 		StreamTitle: "Going Live",
 		StreamURL:   "https://example.com/live",
 	})
 	if err != nil {
-		t.Fatalf("dry run: %v", err)
+		t.Fatalf("go live: %v", err)
 	}
 	if len(summary.Results) != 1 || summary.Results[0].State != domain.ExecutionStateValidationError {
 		t.Fatalf("unexpected validation result: %+v", summary.Results)
@@ -329,36 +246,6 @@ func TestExecutionServiceReturnsValidationErrorsPerDestination(t *testing.T) {
 	}
 	if summary.Status != domain.ExecutionSummaryStatusPartial {
 		t.Fatalf("expected partial summary status, got %+v", summary)
-	}
-}
-
-func TestExecutionServiceDryRunSurfacesInvalidDestinationConfig(t *testing.T) {
-	destRepo := newDestinationRepositoryStub()
-	destRepo.items["mastodon-main"] = domain.Destination{
-		ID:         "mastodon-main",
-		Platform:   domain.PlatformMastodon,
-		Name:       "Main Mastodon",
-		Enabled:    true,
-		Template:   "{{stream_title}}",
-		ConfigJSON: `{"credentialKey":"mastodon/main","instanceURL":"bad-url"}`,
-	}
-	settingsRepo := &settingsRepositoryStub{item: domain.DefaultAppSettings()}
-	history := &postHistoryRepositoryStub{recordsByDestination: map[string][]ports.PostHistoryRecord{}}
-	service := NewExecutionService(destRepo, settingsRepo, history, &liveNowSessionRepositoryExecutionStub{}, &discordPublisherStub{}, &blueskyPublisherStub{}, &mastodonPublisherStub{})
-	service.clock = fixedClock{now: time.Date(2026, 5, 31, 18, 0, 0, 0, time.UTC)}
-
-	summary, err := service.DryRun(context.Background(), domain.Announcement{
-		StreamTitle: "Going Live",
-		StreamURL:   "https://example.com/live",
-	})
-	if err != nil {
-		t.Fatalf("dry run: %v", err)
-	}
-	if len(summary.Results) != 1 || summary.Results[0].State != domain.ExecutionStateValidationError {
-		t.Fatalf("unexpected dry run result: %+v", summary.Results)
-	}
-	if summary.Results[0].Message != "Mastodon instance URL must be a valid absolute URL" {
-		t.Fatalf("expected Mastodon config validation message, got %+v", summary.Results[0])
 	}
 }
 
@@ -503,7 +390,7 @@ func TestExecutionServiceGoLiveMarksUnavailableIntegrationsAsSkipped(t *testing.
 	}
 }
 
-func TestExecutionServiceGoLiveRoutesPublishersToTestTargetsWhenEnabled(t *testing.T) {
+func TestExecutionServiceGoLiveUsesSelectedDestinationTargets(t *testing.T) {
 	destRepo := newDestinationRepositoryStub()
 	destRepo.listItems = []domain.Destination{
 		{
@@ -520,7 +407,7 @@ func TestExecutionServiceGoLiveRoutesPublishersToTestTargetsWhenEnabled(t *testi
 			Name:       "Main Bluesky",
 			Enabled:    true,
 			Template:   "{{stream_title}}",
-			ConfigJSON: `{"accountIdentifier":"don.main","credentialKey":"bluesky/main"}`,
+			ConfigJSON: `{"accountIdentifier":"don.main","credentialKey":"bluesky/main","cardThumbnailURL":"https://example.com/avatar.png","liveNowDurationMinutes":90}`,
 		},
 		{
 			ID:         "mastodon-main",
@@ -531,14 +418,7 @@ func TestExecutionServiceGoLiveRoutesPublishersToTestTargetsWhenEnabled(t *testi
 			ConfigJSON: `{"credentialKey":"mastodon/main","instanceURL":"https://mastodon.social"}`,
 		},
 	}
-	settings := domain.DefaultAppSettings()
-	settings.TestModeEnabled = true
-	settings.TestDiscordWebhookKey = "discord/test"
-	settings.TestBlueskyAccountIdentifier = "don.test"
-	settings.TestBlueskyCredentialKey = "bluesky/test"
-	settings.TestMastodonCredentialKey = "mastodon/test"
-	settings.TestMastodonInstanceURL = "https://mastodon.test"
-	settingsRepo := &settingsRepositoryStub{item: settings}
+	settingsRepo := &settingsRepositoryStub{item: domain.DefaultAppSettings()}
 	history := &postHistoryRepositoryStub{recordsByDestination: map[string][]ports.PostHistoryRecord{}}
 	sessions := &liveNowSessionRepositoryExecutionStub{}
 	discord := &discordPublisherStub{}
@@ -554,42 +434,48 @@ func TestExecutionServiceGoLiveRoutesPublishersToTestTargetsWhenEnabled(t *testi
 	if err != nil {
 		t.Fatalf("go live: %v", err)
 	}
-	if len(discord.calls) != 1 || discord.calls[0].key != "discord/test" {
-		t.Fatalf("expected discord test key, got %+v", discord.calls)
+	if len(discord.calls) != 1 || discord.calls[0].key != "https://discord.com/api/webhooks/123/main" {
+		t.Fatalf("expected selected discord key, got %+v", discord.calls)
 	}
-	if len(bluesky.calls) != 1 || bluesky.calls[0].identifier != "don.test" || bluesky.calls[0].key != "bluesky/test" {
-		t.Fatalf("expected bluesky test key, got %+v", bluesky.calls)
+	if len(bluesky.calls) != 1 || bluesky.calls[0].identifier != "don.main" || bluesky.calls[0].key != "bluesky/main" {
+		t.Fatalf("expected selected bluesky key, got %+v", bluesky.calls)
 	}
-	if len(bluesky.liveNowSetCalls) != 1 || bluesky.liveNowSetCalls[0].identifier != "don.test" || bluesky.liveNowSetCalls[0].key != "bluesky/test" {
-		t.Fatalf("expected bluesky live now to use test key, got %+v", bluesky.liveNowSetCalls)
+	if bluesky.calls[0].metadata.StreamURL != "https://example.com/live" || bluesky.calls[0].metadata.StreamTitle != "Going Live" || bluesky.calls[0].metadata.ThumbnailURL != "https://example.com/avatar.png" {
+		t.Fatalf("expected bluesky post metadata, got %+v", bluesky.calls[0].metadata)
 	}
-	if len(sessions.upserts) != 1 || sessions.upserts[0].AccountIdentifier != "don.test" || sessions.upserts[0].CredentialKey != "bluesky/test" {
-		t.Fatalf("expected tracked session to use test route, got %+v", sessions.upserts)
+	if len(bluesky.liveNowSetCalls) != 1 || bluesky.liveNowSetCalls[0].identifier != "don.main" || bluesky.liveNowSetCalls[0].key != "bluesky/main" {
+		t.Fatalf("expected bluesky live now to use selected key, got %+v", bluesky.liveNowSetCalls)
 	}
-	if len(mastodon.calls) != 1 || mastodon.calls[0].key != "mastodon/test" || mastodon.calls[0].instanceURL != "https://mastodon.test" {
-		t.Fatalf("expected mastodon test target, got %+v", mastodon.calls)
+	if bluesky.liveNowSetCalls[0].status.DurationMinutes != 90 {
+		t.Fatalf("expected configured live now duration, got %+v", bluesky.liveNowSetCalls[0].status)
+	}
+	if len(sessions.upserts) != 1 || sessions.upserts[0].AccountIdentifier != "don.main" || sessions.upserts[0].CredentialKey != "bluesky/main" {
+		t.Fatalf("expected tracked session to use selected destination, got %+v", sessions.upserts)
+	}
+	if len(mastodon.calls) != 1 || mastodon.calls[0].key != "mastodon/main" || mastodon.calls[0].instanceURL != "https://mastodon.social" {
+		t.Fatalf("expected selected mastodon target, got %+v", mastodon.calls)
 	}
 	if len(summary.Results) != 3 {
 		t.Fatalf("expected 3 results, got %+v", summary.Results)
 	}
-	if !summary.TestModeActive {
-		t.Fatalf("expected test mode active, got %+v", summary)
+	if summary.TestModeActive {
+		t.Fatalf("expected legacy summary flag to stay false, got %+v", summary)
 	}
-	if summary.Status != domain.ExecutionSummaryStatusWarning {
-		t.Fatalf("expected warning summary status for test mode routing, got %+v", summary)
+	if summary.Status != domain.ExecutionSummaryStatusSuccess {
+		t.Fatalf("expected success summary status, got %+v", summary)
 	}
 	for _, result := range summary.Results {
 		if result.State != domain.ExecutionStateSuccess {
 			t.Fatalf("expected success results, got %+v", summary.Results)
 		}
 		if result.Platform == domain.PlatformBluesky {
-			if result.Message != "Published successfully. Live Now set. Test Mode route applied." {
-				t.Fatalf("expected bluesky live now routing note, got %+v", summary.Results)
+			if result.Message != "Published successfully. Live Now set." {
+				t.Fatalf("expected bluesky live now success message, got %+v", summary.Results)
 			}
 			continue
 		}
-		if result.Message != "Published successfully. Test Mode route applied." {
-			t.Fatalf("expected test mode routing note, got %+v", summary.Results)
+		if result.Message != "Published successfully." {
+			t.Fatalf("expected publish success message, got %+v", summary.Results)
 		}
 	}
 }

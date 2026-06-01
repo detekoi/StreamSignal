@@ -18,14 +18,20 @@ type discordDestinationConfig struct {
 }
 
 type blueskyDestinationConfig struct {
-	AccountIdentifier string `json:"accountIdentifier"`
-	CredentialKey     string `json:"credentialKey"`
+	AccountIdentifier      string `json:"accountIdentifier"`
+	CredentialKey          string `json:"credentialKey"`
+	LiveStatusTemplate     string `json:"liveStatusTemplate"`
+	LiveNowDurationMinutes int    `json:"liveNowDurationMinutes"`
+	CardThumbnailURL       string `json:"cardThumbnailURL"`
+	CardThumbnailDataURL   string `json:"cardThumbnailDataURL"`
 }
 
 type mastodonDestinationConfig struct {
 	CredentialKey string `json:"credentialKey"`
 	InstanceURL   string `json:"instanceURL"`
 }
+
+const defaultBlueskyLiveNowDurationMinutes = 120
 
 type renderedExecutionTarget struct {
 	destination domain.Destination
@@ -67,14 +73,6 @@ func NewExecutionService(
 		duplicates:   duplicate.NewService(history),
 		clock:        systemClock{},
 	}
-}
-
-func (s *ExecutionService) DryRun(ctx context.Context, announcement domain.Announcement) (domain.ExecutionSummary, error) {
-	results, settings, _, err := s.execute(ctx, domain.ExecutionModeDryRun, announcement, false)
-	if err != nil {
-		return domain.ExecutionSummary{}, err
-	}
-	return buildExecutionSummary(domain.ExecutionModeDryRun, settings, results, nil), nil
 }
 
 func (s *ExecutionService) GoLive(ctx context.Context, announcement domain.Announcement) (domain.ExecutionSummary, error) {
@@ -141,19 +139,7 @@ func (s *ExecutionService) EndStream(ctx context.Context) (domain.ExecutionSumma
 			continue
 		}
 
-		routedDestination, routingNote, err := routeDestinationForExecution(destination, settings)
-		if err != nil {
-			results = append(results, domain.ExecutionResult{
-				DestinationID:   destination.ID,
-				DestinationName: destination.Name,
-				Platform:        destination.Platform,
-				State:           domain.ExecutionStateValidationError,
-				Message:         err.Error(),
-			})
-			continue
-		}
-
-		err = s.clearBlueskyLiveNow(ctx, routedDestination, session)
+		err = s.clearBlueskyLiveNow(ctx, destination, session)
 		if err != nil {
 			state := domain.ExecutionStateFailed
 			if domain.IsIntegrationUnavailable(err) {
@@ -164,7 +150,7 @@ func (s *ExecutionService) EndStream(ctx context.Context) (domain.ExecutionSumma
 				DestinationName: destination.Name,
 				Platform:        destination.Platform,
 				State:           state,
-				Message:         withRoutingNote(err.Error(), routingNote),
+				Message:         err.Error(),
 			})
 			continue
 		}
@@ -177,7 +163,7 @@ func (s *ExecutionService) EndStream(ctx context.Context) (domain.ExecutionSumma
 			DestinationName: destination.Name,
 			Platform:        destination.Platform,
 			State:           domain.ExecutionStateSuccess,
-			Message:         withRoutingNote("Live Now cleared successfully.", routingNote),
+			Message:         "Live Now cleared successfully.",
 		})
 	}
 
@@ -188,18 +174,6 @@ func (s *ExecutionService) EndStream(ctx context.Context) (domain.ExecutionSumma
 
 		for _, destination := range destinations {
 			if err := validateDestinationConfig(destination); err != nil {
-				results = append(results, domain.ExecutionResult{
-					DestinationID:   destination.ID,
-					DestinationName: destination.Name,
-					Platform:        destination.Platform,
-					State:           domain.ExecutionStateValidationError,
-					Message:         err.Error(),
-				})
-				continue
-			}
-
-			routedDestination, routingNote, err := routeDestinationForExecution(destination, settings)
-			if err != nil {
 				results = append(results, domain.ExecutionResult{
 					DestinationID:   destination.ID,
 					DestinationName: destination.Name,
@@ -230,7 +204,7 @@ func (s *ExecutionService) EndStream(ctx context.Context) (domain.ExecutionSumma
 				continue
 			}
 
-			if err := s.publish(ctx, routedDestination, content); err != nil {
+			if err := s.publish(ctx, destination, content, announcementForDestination); err != nil {
 				state := domain.ExecutionStateFailed
 				if domain.IsIntegrationUnavailable(err) {
 					state = domain.ExecutionStateSkipped
@@ -240,7 +214,7 @@ func (s *ExecutionService) EndStream(ctx context.Context) (domain.ExecutionSumma
 					DestinationName: destination.Name,
 					Platform:        destination.Platform,
 					State:           state,
-					Message:         withRoutingNote(fmt.Sprintf("End stream post failed: %s", err.Error()), routingNote),
+					Message:         fmt.Sprintf("End stream post failed: %s", err.Error()),
 					Content:         content,
 				})
 				continue
@@ -251,7 +225,7 @@ func (s *ExecutionService) EndStream(ctx context.Context) (domain.ExecutionSumma
 				DestinationName: destination.Name,
 				Platform:        destination.Platform,
 				State:           domain.ExecutionStateSuccess,
-				Message:         withRoutingNote("End stream post published successfully.", routingNote),
+				Message:         "End stream post published successfully.",
 				Content:         content,
 			})
 		}
@@ -296,34 +270,6 @@ func (s *ExecutionService) execute(ctx context.Context, mode domain.ExecutionMod
 		}
 	}
 
-	if mode == domain.ExecutionModeDryRun {
-		for _, rendered := range renderedTargets {
-			if hasValidationResult(results, rendered.destination.ID) {
-				continue
-			}
-			if err := validateDestinationConfig(rendered.destination); err != nil {
-				results = append(results, domain.ExecutionResult{
-					DestinationID:   rendered.destination.ID,
-					DestinationName: rendered.destination.Name,
-					Platform:        rendered.destination.Platform,
-					State:           domain.ExecutionStateValidationError,
-					Message:         err.Error(),
-					Content:         rendered.content,
-				})
-				continue
-			}
-			results = append(results, domain.ExecutionResult{
-				DestinationID:   rendered.destination.ID,
-				DestinationName: rendered.destination.Name,
-				Platform:        rendered.destination.Platform,
-				State:           domain.ExecutionStateSuccess,
-				Message:         "Dry Run simulated successfully.",
-				Content:         rendered.content,
-			})
-		}
-		return results, settings, nil, nil
-	}
-
 	if !skipDuplicateWarning {
 		candidates := make(map[domain.Destination]string)
 		for _, rendered := range renderedTargets {
@@ -360,20 +306,7 @@ func (s *ExecutionService) execute(ctx context.Context, mode domain.ExecutionMod
 			continue
 		}
 
-		routedDestination, routingNote, err := routeDestinationForExecution(destination, settings)
-		if err != nil {
-			results = append(results, domain.ExecutionResult{
-				DestinationID:   destination.ID,
-				DestinationName: destination.Name,
-				Platform:        destination.Platform,
-				State:           domain.ExecutionStateValidationError,
-				Message:         err.Error(),
-				Content:         content,
-			})
-			continue
-		}
-
-		err = s.publish(ctx, routedDestination, content)
+		err = s.publish(ctx, destination, content, normalized)
 		if err != nil {
 			state := domain.ExecutionStateFailed
 			if domain.IsIntegrationUnavailable(err) {
@@ -384,17 +317,17 @@ func (s *ExecutionService) execute(ctx context.Context, mode domain.ExecutionMod
 				DestinationName: destination.Name,
 				Platform:        destination.Platform,
 				State:           state,
-				Message:         withRoutingNote(err.Error(), routingNote),
+				Message:         err.Error(),
 				Content:         content,
 			})
 			continue
 		}
 
-		message := withRoutingNote("Published successfully.", routingNote)
+		message := "Published successfully."
 		state := domain.ExecutionStateSuccess
 
 		if destination.Platform == domain.PlatformBluesky {
-			if err := s.applyBlueskyLiveNow(ctx, routedDestination, normalized); err != nil {
+			if err := s.applyBlueskyLiveNow(ctx, destination, normalized); err != nil {
 				if err := s.history.Record(ctx, destination.ID, content, duplicate.HashContent(content), now); err != nil {
 					return nil, domain.AppSettings{}, nil, err
 				}
@@ -403,12 +336,12 @@ func (s *ExecutionService) execute(ctx context.Context, mode domain.ExecutionMod
 					DestinationName: destination.Name,
 					Platform:        destination.Platform,
 					State:           domain.ExecutionStateFailed,
-					Message:         withRoutingNote(fmt.Sprintf("Published successfully, but Live Now update failed: %s", err.Error()), routingNote),
+					Message:         fmt.Sprintf("Published successfully, but Live Now update failed: %s", err.Error()),
 					Content:         content,
 				})
 				continue
 			}
-			if err := s.trackBlueskyLiveNowSession(ctx, destination, routedDestination, normalized, now); err != nil {
+			if err := s.trackBlueskyLiveNowSession(ctx, destination, normalized, now); err != nil {
 				if err := s.history.Record(ctx, destination.ID, content, duplicate.HashContent(content), now); err != nil {
 					return nil, domain.AppSettings{}, nil, err
 				}
@@ -417,12 +350,12 @@ func (s *ExecutionService) execute(ctx context.Context, mode domain.ExecutionMod
 					DestinationName: destination.Name,
 					Platform:        destination.Platform,
 					State:           domain.ExecutionStateFailed,
-					Message:         withRoutingNote(fmt.Sprintf("Published successfully and Live Now was set, but recovery tracking failed: %s", err.Error()), routingNote),
+					Message:         fmt.Sprintf("Published successfully and Live Now was set, but recovery tracking failed: %s", err.Error()),
 					Content:         content,
 				})
 				continue
 			}
-			message = withRoutingNote("Published successfully. Live Now set.", routingNote)
+			message = "Published successfully. Live Now set."
 		}
 
 		if err := s.history.Record(ctx, destination.ID, content, duplicate.HashContent(content), now); err != nil {
@@ -468,9 +401,10 @@ func (s *ExecutionService) applyBlueskyLiveNow(ctx context.Context, destination 
 		return fmt.Errorf("invalid Bluesky config")
 	}
 	return s.liveNow.Set(ctx, config.AccountIdentifier, config.CredentialKey, domain.BlueskyLiveNowStatus{
-		URL:         announcement.StreamURL,
-		Title:       announcement.StreamTitle,
-		Description: announcement.Message,
+		URL:             announcement.StreamURL,
+		Title:           announcement.StreamTitle,
+		Description:     announcement.Message,
+		DurationMinutes: blueskyLiveNowDuration(config.LiveNowDurationMinutes),
 	})
 }
 
@@ -485,15 +419,15 @@ func (s *ExecutionService) clearBlueskyLiveNow(ctx context.Context, destination 
 	return s.liveNow.Clear(ctx, config.AccountIdentifier, config.CredentialKey)
 }
 
-func (s *ExecutionService) trackBlueskyLiveNowSession(ctx context.Context, original domain.Destination, routed domain.Destination, announcement domain.Announcement, startedAt time.Time) error {
+func (s *ExecutionService) trackBlueskyLiveNowSession(ctx context.Context, destination domain.Destination, announcement domain.Announcement, startedAt time.Time) error {
 	var config blueskyDestinationConfig
-	if err := json.Unmarshal([]byte(routed.ConfigJSON), &config); err != nil {
+	if err := json.Unmarshal([]byte(destination.ConfigJSON), &config); err != nil {
 		return fmt.Errorf("invalid Bluesky config")
 	}
 	return s.sessions.Upsert(ctx, domain.ActiveLiveNowSession{
-		DestinationID:     original.ID,
-		DestinationName:   original.Name,
-		Platform:          string(original.Platform),
+		DestinationID:     destination.ID,
+		DestinationName:   destination.Name,
+		Platform:          string(destination.Platform),
 		AccountIdentifier: config.AccountIdentifier,
 		CredentialKey:     config.CredentialKey,
 		StreamURL:         announcement.StreamURL,
@@ -502,7 +436,7 @@ func (s *ExecutionService) trackBlueskyLiveNowSession(ctx context.Context, origi
 	})
 }
 
-func (s *ExecutionService) publish(ctx context.Context, destination domain.Destination, content string) error {
+func (s *ExecutionService) publish(ctx context.Context, destination domain.Destination, content string, announcement domain.Announcement) error {
 	switch destination.Platform {
 	case domain.PlatformDiscord:
 		var config discordDestinationConfig
@@ -521,7 +455,13 @@ func (s *ExecutionService) publish(ctx context.Context, destination domain.Desti
 		if config.AccountIdentifier == "" || config.CredentialKey == "" {
 			return fmt.Errorf("missing Bluesky connection details")
 		}
-		return s.bluesky.PublishPost(ctx, config.AccountIdentifier, config.CredentialKey, content)
+		return s.bluesky.PublishPost(ctx, config.AccountIdentifier, config.CredentialKey, content, domain.BlueskyPostMetadata{
+			StreamURL:        announcement.StreamURL,
+			StreamTitle:      announcement.StreamTitle,
+			Description:      announcement.Message,
+			ThumbnailURL:     config.CardThumbnailURL,
+			ThumbnailDataURL: config.CardThumbnailDataURL,
+		})
 	case domain.PlatformMastodon:
 		var config mastodonDestinationConfig
 		if err := json.Unmarshal([]byte(destination.ConfigJSON), &config); err != nil {
@@ -534,6 +474,13 @@ func (s *ExecutionService) publish(ctx context.Context, destination domain.Desti
 	default:
 		return fmt.Errorf("unsupported destination platform")
 	}
+}
+
+func blueskyLiveNowDuration(value int) int {
+	if value > 0 {
+		return value
+	}
+	return defaultBlueskyLiveNowDurationMinutes
 }
 
 func hasValidationResult(results []domain.ExecutionResult, destinationID string) bool {
@@ -552,86 +499,14 @@ func warningMessage(warning *duplicate.Warning) string {
 	return warning.Message
 }
 
-func routeDestinationForExecution(destination domain.Destination, settings domain.AppSettings) (domain.Destination, string, error) {
-	if !settings.TestModeEnabled {
-		return destination, "", nil
-	}
-
-	routed := destination
-
-	switch destination.Platform {
-	case domain.PlatformDiscord:
-		var config discordDestinationConfig
-		if err := json.Unmarshal([]byte(destination.ConfigJSON), &config); err != nil {
-			return domain.Destination{}, "", fmt.Errorf("invalid Discord config")
-		}
-		if strings.TrimSpace(settings.TestDiscordWebhookKey) == "" {
-			return domain.Destination{}, "", fmt.Errorf("test Discord webhook key is required when test mode is enabled")
-		}
-		config.WebhookKey = settings.TestDiscordWebhookKey
-		encoded, err := json.Marshal(config)
-		if err != nil {
-			return domain.Destination{}, "", fmt.Errorf("encode Discord test config: %w", err)
-		}
-		routed.ConfigJSON = string(encoded)
-	case domain.PlatformBluesky:
-		var config blueskyDestinationConfig
-		if err := json.Unmarshal([]byte(destination.ConfigJSON), &config); err != nil {
-			return domain.Destination{}, "", fmt.Errorf("invalid Bluesky config")
-		}
-		if strings.TrimSpace(settings.TestBlueskyAccountIdentifier) == "" {
-			return domain.Destination{}, "", fmt.Errorf("test Bluesky account identifier is required when test mode is enabled")
-		}
-		if strings.TrimSpace(settings.TestBlueskyCredentialKey) == "" {
-			return domain.Destination{}, "", fmt.Errorf("test Bluesky credential key is required when test mode is enabled")
-		}
-		config.AccountIdentifier = settings.TestBlueskyAccountIdentifier
-		config.CredentialKey = settings.TestBlueskyCredentialKey
-		encoded, err := json.Marshal(config)
-		if err != nil {
-			return domain.Destination{}, "", fmt.Errorf("encode Bluesky test config: %w", err)
-		}
-		routed.ConfigJSON = string(encoded)
-	case domain.PlatformMastodon:
-		var config mastodonDestinationConfig
-		if err := json.Unmarshal([]byte(destination.ConfigJSON), &config); err != nil {
-			return domain.Destination{}, "", fmt.Errorf("invalid Mastodon config")
-		}
-		if strings.TrimSpace(settings.TestMastodonCredentialKey) == "" {
-			return domain.Destination{}, "", fmt.Errorf("test Mastodon credential key is required when test mode is enabled")
-		}
-		if strings.TrimSpace(settings.TestMastodonInstanceURL) == "" {
-			return domain.Destination{}, "", fmt.Errorf("test Mastodon instance URL is required when test mode is enabled")
-		}
-		config.CredentialKey = settings.TestMastodonCredentialKey
-		config.InstanceURL = settings.TestMastodonInstanceURL
-		encoded, err := json.Marshal(config)
-		if err != nil {
-			return domain.Destination{}, "", fmt.Errorf("encode Mastodon test config: %w", err)
-		}
-		routed.ConfigJSON = string(encoded)
-	default:
-		return domain.Destination{}, "", fmt.Errorf("unsupported destination platform")
-	}
-
-	return routed, "Test Mode route applied.", nil
-}
-
-func withRoutingNote(message, routingNote string) string {
-	if routingNote == "" {
-		return message
-	}
-	return fmt.Sprintf("%s %s", message, routingNote)
-}
-
 func buildExecutionSummary(
 	mode domain.ExecutionMode,
-	settings domain.AppSettings,
+	_ domain.AppSettings,
 	results []domain.ExecutionResult,
 	warning *duplicate.Warning,
 ) domain.ExecutionSummary {
 	summary := summarizeExecution(mode, results)
-	summary.TestModeActive = settings.TestModeEnabled
+	summary.TestModeActive = false
 	summary.RequiresDuplicateConfirmation = warning != nil
 	summary.DuplicateWarningMessage = warningMessage(warning)
 	summary.Status = executionSummaryStatus(summary)

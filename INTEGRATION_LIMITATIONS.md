@@ -18,6 +18,10 @@ This document records practical limits and constraints in StreamSignal's current
 - StreamSignal currently uses account identifier plus app password authentication.
 - Bluesky `Live Now` support depends on Bluesky's current API and product behavior.
 - StreamSignal sets and clears the dedicated `Live Now` status record. It does not modify normal profile text as part of the live workflow.
+- StreamSignal can attach a stream-card thumbnail by fetching a direct HTTP(S) image URL or by uploading a local image selected in the destination form.
+- Uploaded local card images are resized in the frontend when needed, stored in local destination configuration as image data, and uploaded to Bluesky as a blob when posting.
+- Bluesky card thumbnails must fit Bluesky's current blob limits, so oversized images may be compressed or rejected.
+- StreamSignal does not currently fetch a Twitch profile image or stream thumbnail automatically. If Twitch metadata does not provide the expected preview, configure a card thumbnail manually.
 - If Bluesky changes the `Live Now` record contract or rollout behavior, the integration may need updates.
 
 ## Mastodon
@@ -31,7 +35,7 @@ This document records practical limits and constraints in StreamSignal's current
 - StreamSignal is designed for automated outbound posting, not for reading back channel state from every platform.
 - Some integrations require server, instance, or account-level approval outside the app before StreamSignal can post.
 - Credential setup is currently guided manual entry plus connection testing, not full OAuth sign-in for every platform.
-- Test Mode helps route posts away from production destinations, but it still depends on valid test credentials for each platform.
+- Test destinations are configured as normal destinations with their own credentials, so test posts go only to the accounts or channels selected on Home.
 
 ## Why This Exists
 

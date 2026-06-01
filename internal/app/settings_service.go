@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"StreamSignal/internal/domain"
 	"StreamSignal/internal/ports"
@@ -27,20 +26,6 @@ func (s *SettingsService) Save(ctx context.Context, settings domain.AppSettings)
 	}
 	if settings.EndStreamPostEnabled && settings.EndStreamTemplate == "" {
 		return domain.AppSettings{}, fmt.Errorf("end stream template is required when end stream posting is enabled")
-	}
-	if settings.TestModeEnabled {
-		switch {
-		case strings.TrimSpace(settings.TestDiscordWebhookKey) == "":
-			return domain.AppSettings{}, fmt.Errorf("test Discord webhook key is required when test mode is enabled")
-		case strings.TrimSpace(settings.TestBlueskyAccountIdentifier) == "":
-			return domain.AppSettings{}, fmt.Errorf("test Bluesky account identifier is required when test mode is enabled")
-		case strings.TrimSpace(settings.TestBlueskyCredentialKey) == "":
-			return domain.AppSettings{}, fmt.Errorf("test Bluesky credential key is required when test mode is enabled")
-		case strings.TrimSpace(settings.TestMastodonCredentialKey) == "":
-			return domain.AppSettings{}, fmt.Errorf("test Mastodon credential key is required when test mode is enabled")
-		case strings.TrimSpace(settings.TestMastodonInstanceURL) == "":
-			return domain.AppSettings{}, fmt.Errorf("test Mastodon instance URL is required when test mode is enabled")
-		}
 	}
 	if err := s.repository.Save(ctx, settings); err != nil {
 		return domain.AppSettings{}, err

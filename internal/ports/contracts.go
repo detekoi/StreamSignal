@@ -56,7 +56,7 @@ type DiscordCredentialVerifier interface {
 }
 
 type BlueskyPublisher interface {
-	PublishPost(ctx context.Context, accountIdentifier string, credentialKey string, content string) error
+	PublishPost(ctx context.Context, accountIdentifier string, credentialKey string, content string, metadata domain.BlueskyPostMetadata) error
 }
 
 type BlueskyCredentialVerifier interface {

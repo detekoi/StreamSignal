@@ -17,7 +17,7 @@ func (DiscordPublisher) Publish(context.Context, string, string) error {
 
 type BlueskyPublisher struct{}
 
-func (BlueskyPublisher) PublishPost(context.Context, string, string, string) error {
+func (BlueskyPublisher) PublishPost(context.Context, string, string, string, domain.BlueskyPostMetadata) error {
 	return &domain.IntegrationUnavailableError{
 		Platform: domain.PlatformBluesky,
 		Message:  "Bluesky integration is not connected yet",

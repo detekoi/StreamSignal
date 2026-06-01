@@ -151,14 +151,6 @@ func (a *App) GetDiagnostics() (string, error) {
 	return a.diagnosticsSvc.Build(a.ctx)
 }
 
-func (a *App) DryRun(announcement domain.Announcement) (domain.ExecutionSummary, error) {
-	summary, err := a.executionSvc.DryRun(a.ctx, announcement)
-	if err == nil {
-		_ = a.logService.Append(a.ctx, "dry_run", "dry_run", executionLogStatus(summary), executionLogMessage("Dry Run", summary))
-	}
-	return summary, err
-}
-
 func (a *App) GoLive(announcement domain.Announcement) (domain.ExecutionSummary, error) {
 	summary, err := a.executionSvc.GoLive(a.ctx, announcement)
 	if err == nil {
@@ -224,9 +216,6 @@ func executionLogMessage(action string, summary domain.ExecutionSummary) string 
 		summary.SkippedCount,
 		summary.ValidationErrorCount,
 	)
-	if summary.TestModeActive {
-		message = fmt.Sprintf("%s Test Mode routing was active.", message)
-	}
 	if summary.RequiresDuplicateConfirmation {
 		return fmt.Sprintf("%s Duplicate confirmation required.", message)
 	}

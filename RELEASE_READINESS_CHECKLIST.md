@@ -5,6 +5,7 @@ This checklist replaces the old implementation plan as the active next-phase doc
 Current reality:
 
 - core workflows are implemented
+- Bluesky has been manually validated for app-password auth, Go Live posting, rich stream links/cards, configurable `Live Now`, End Stream clearing, and recovery cleanup
 - automated tests and CI gates are in place
 - the app is still in workflow-validation and usability-refinement, not final MVP signoff
 
@@ -22,11 +23,14 @@ Ship StreamSignal in a way that is:
 - verify all core workflows manually on a release candidate build
 - verify the current UI is understandable to a first-time user without project context
 - verify the Home, Destinations, Settings, and Logs tabs follow a clear human workflow
-- confirm Preview and Dry Run stay network-free
+- remove or hide the temporary Execution Results section before MVP release; it is for workflow validation, not end users
+- remove or hide the temporary Logs tab before MVP release; it is for validation/support diagnostics, not normal end-user use
+- confirm Preview stays network-free
 - confirm Go Live publishes correctly to Discord, Bluesky, and Mastodon
 - confirm End Stream clears Bluesky `Live Now`
+- confirm Bluesky card thumbnail behavior works with both a direct image URL and an uploaded local image
 - confirm optional end-stream posting works as expected
-- confirm Test Mode never routes to production targets
+- confirm test destinations publish only to their configured test accounts or channels
 - confirm duplicate warning and force-confirm flows behave correctly
 - confirm pending `Live Now` recovery works after restart
 - confirm no dummy, stale, or misleading workflow state survives between real app sessions
@@ -51,7 +55,7 @@ Ship StreamSignal in a way that is:
 
 - document the minimum setup path for a new user
 - verify destination setup is understandable without internal project knowledge
-- verify Test Mode setup is understandable and clearly separated from production setup
+- verify test destination setup is understandable and clearly separated from production setup
 - verify error messages are actionable when credentials or URLs are invalid
 - verify recovery wording is understandable to a non-technical user
 - verify layout hierarchy feels like a functional desktop tool rather than a landing page or form dump

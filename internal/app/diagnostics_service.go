@@ -50,7 +50,6 @@ func (s *DiagnosticsService) Build(ctx context.Context) (string, error) {
 	var builder strings.Builder
 	fmt.Fprintf(&builder, "StreamSignal Diagnostics\n")
 	fmt.Fprintf(&builder, "Generated At: %s\n", s.clock.Now().Format(time.RFC3339Nano))
-	fmt.Fprintf(&builder, "Test Mode Enabled: %t\n", settings.TestModeEnabled)
 	fmt.Fprintf(&builder, "Duplicate Protection Enabled: %t\n", settings.DuplicateProtectionEnabled)
 	fmt.Fprintf(&builder, "Duplicate Window Minutes: %d\n", settings.DuplicateWindowMinutes)
 	fmt.Fprintf(&builder, "End Stream Post Enabled: %t\n", settings.EndStreamPostEnabled)
@@ -105,8 +104,6 @@ func diagnosticsActionLabel(action string) string {
 	switch action {
 	case "generate_preview":
 		return "Preview"
-	case "dry_run":
-		return "Dry Run"
 	case "go_live":
 		return "Go Live"
 	case "force_go_live":
