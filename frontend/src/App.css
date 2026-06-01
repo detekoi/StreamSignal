@@ -315,9 +315,60 @@ body {
     gap: 8px;
 }
 
-.field span {
+.field span,
+.field label {
     font-size: 0.92rem;
     font-weight: 600;
+}
+
+.field-label-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.info-tooltip {
+    position: relative;
+    display: inline-grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    border: 1px solid rgba(123, 212, 229, 0.45);
+    border-radius: 50%;
+    background: rgba(123, 212, 229, 0.08);
+    color: var(--cyan);
+    font-size: 0.78rem;
+    font-weight: 700;
+    line-height: 1;
+    cursor: help;
+}
+
+.info-tooltip span {
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 8px);
+    z-index: 5;
+    width: max-content;
+    max-width: 220px;
+    transform: translateX(-50%) translateY(4px);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: #101b26;
+    color: var(--text);
+    padding: 8px 10px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    line-height: 1.25;
+    opacity: 0;
+    pointer-events: none;
+    box-shadow: var(--shadow);
+    transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.info-tooltip:hover span,
+.info-tooltip:focus-visible span {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
 }
 
 .field input,

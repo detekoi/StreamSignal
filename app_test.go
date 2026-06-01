@@ -225,7 +225,7 @@ func TestAppEndStreamDelegatesToExecutionServiceAndLogs(t *testing.T) {
 		t.Fatal("expected saved destination id")
 	}
 
-	summary, err := app.EndStream()
+	summary, err := app.EndStream(domain.Announcement{})
 	if err != nil {
 		t.Fatalf("end stream: %v", err)
 	}

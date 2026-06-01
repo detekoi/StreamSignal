@@ -129,6 +129,7 @@ function toPreviewItem(item: domain.PreviewItem): PreviewItem {
         destinationID: item.destinationID,
         destinationName: item.destinationName,
         platform: item.platform,
+        previewLabel: item.previewLabel,
         content: item.content,
         characterCount: item.characterCount,
         validationState: item.validationState,
@@ -160,8 +161,14 @@ export function forceGoLive(announcement: AnnouncementInput, destinationIDs: str
     return ForceGoLive(toAnnouncementModel(announcement, destinationIDs)).then(toExecutionSummary);
 }
 
-export function endStream(): Promise<ExecutionSummary> {
-    return EndStream().then(toExecutionSummary);
+export function endStream(destinationIDs: string[] = []): Promise<ExecutionSummary> {
+    return EndStream(toAnnouncementModel({
+        streamTitle: '',
+        streamURL: '',
+        category: '',
+        message: '',
+        hashtags: '',
+    }, destinationIDs)).then(toExecutionSummary);
 }
 
 export function listPendingLiveNowSessions(): Promise<ActiveLiveNowSession[]> {

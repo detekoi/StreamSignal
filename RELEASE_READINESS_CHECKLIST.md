@@ -5,6 +5,7 @@ This checklist replaces the old implementation plan as the active next-phase doc
 Current reality:
 
 - core workflows are implemented
+- Discord has been manually validated for webhook auth, Go Live posting, selected-destination targeting, optional additional image embeds, and destination-level End Stream behavior
 - Bluesky has been manually validated for app-password auth, Go Live posting, rich stream links/cards, configurable `Live Now`, End Stream clearing, and recovery cleanup
 - automated tests and CI gates are in place
 - the app is still in workflow-validation and usability-refinement, not final MVP signoff
@@ -26,9 +27,12 @@ Ship StreamSignal in a way that is:
 - remove or hide the temporary Execution Results section before MVP release; it is for workflow validation, not end users
 - remove or hide the temporary Logs tab before MVP release; it is for validation/support diagnostics, not normal end-user use
 - confirm Preview stays network-free
+- confirm Preview shows Go Live messages plus enabled destination-level End Stream messages in one pass
 - confirm Go Live publishes correctly to Discord, Bluesky, and Mastodon
 - confirm End Stream clears Bluesky `Live Now`
+- confirm destination-level End Stream posting can be enabled or disabled independently per destination
 - confirm Bluesky card thumbnail behavior works with both a direct image URL and an uploaded local image
+- confirm Discord additional image behavior is understandable and does not imply Twitch inline playback
 - confirm optional end-stream posting works as expected
 - confirm test destinations publish only to their configured test accounts or channels
 - confirm duplicate warning and force-confirm flows behave correctly

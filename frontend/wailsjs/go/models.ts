@@ -299,6 +299,7 @@ export namespace domain {
 	    destinationID: string;
 	    destinationName: string;
 	    platform: string;
+	    previewLabel: string;
 	    content: string;
 	    characterCount: number;
 	    validationState: string;
@@ -313,6 +314,7 @@ export namespace domain {
 	        this.destinationID = source["destinationID"];
 	        this.destinationName = source["destinationName"];
 	        this.platform = source["platform"];
+	        this.previewLabel = source["previewLabel"];
 	        this.content = source["content"];
 	        this.characterCount = source["characterCount"];
 	        this.validationState = source["validationState"];
@@ -321,4 +323,3 @@ export namespace domain {
 	}
 
 }
-

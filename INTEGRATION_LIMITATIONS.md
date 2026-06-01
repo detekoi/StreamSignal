@@ -10,6 +10,9 @@ This document records practical limits and constraints in StreamSignal's current
   - you can create the webhook yourself, or
   - a server admin or moderator creates the webhook and gives you the URL.
 - Simply being a member of a Discord server is not enough for automatic posting.
+- Discord can generate its own native link preview when a stream URL appears in the message content, but StreamSignal cannot control that preview image.
+- StreamSignal can also send an optional additional image through the webhook embed. Discord may show that image instead of its native link preview; the image is not a Twitch inline player.
+- End Stream messages are configured per destination, so a Discord destination can leave End Stream posting disabled while other platforms still post or clear live state.
 - StreamSignal does not automate normal user accounts and does not support self-bot style behavior.
 - If broader Discord support is needed later, the legitimate expansion path is a real Discord app or bot installation flow with server authorization.
 

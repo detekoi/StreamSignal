@@ -10,8 +10,8 @@ export function DeleteDestination(arg1) {
   return window['go']['main']['App']['DeleteDestination'](arg1);
 }
 
-export function EndStream() {
-  return window['go']['main']['App']['EndStream']();
+export function EndStream(arg1) {
+  return window['go']['main']['App']['EndStream'](arg1);
 }
 
 export function ForceGoLive(arg1) {

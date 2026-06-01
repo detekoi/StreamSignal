@@ -17,7 +17,7 @@ func TestUnavailablePublishersReturnIntegrationUnavailableErrors(t *testing.T) {
 			name:     "discord",
 			platform: domain.PlatformDiscord,
 			call: func() error {
-				return (DiscordPublisher{}).Publish(context.Background(), "ignored", "hello")
+				return (DiscordPublisher{}).Publish(context.Background(), "ignored", "hello", domain.DiscordPostMetadata{})
 			},
 		},
 		{

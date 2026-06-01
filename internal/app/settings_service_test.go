@@ -58,7 +58,7 @@ func TestSettingsServiceSaveValidatesDuplicateWindow(t *testing.T) {
 	}
 }
 
-func TestSettingsServiceSaveRequiresEndStreamTemplateWhenEnabled(t *testing.T) {
+func TestSettingsServiceSaveAllowsLegacyEndStreamSettings(t *testing.T) {
 	repository := &settingsRepositoryStub{}
 	service := NewSettingsService(repository)
 
@@ -67,8 +67,8 @@ func TestSettingsServiceSaveRequiresEndStreamTemplateWhenEnabled(t *testing.T) {
 		DuplicateWindowMinutes:     10,
 		EndStreamPostEnabled:       true,
 	})
-	if err == nil {
-		t.Fatal("expected validation error")
+	if err != nil {
+		t.Fatalf("expected legacy end stream settings to save, got %v", err)
 	}
 }
 

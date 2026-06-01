@@ -396,6 +396,40 @@ describe('App', () => {
         });
     });
 
+    it('uses the Home tab destination selection for End Stream', async () => {
+        mockedListDestinations.mockResolvedValue([
+            {
+                id: 'discord-main',
+                platform: 'discord',
+                name: 'Main Discord',
+                enabled: true,
+                template: '{{stream_title}}',
+                configJSON: '{"webhookKey":"discord/main"}',
+                createdAt: '',
+                updatedAt: '',
+            },
+            {
+                id: 'bluesky-main',
+                platform: 'bluesky',
+                name: 'Main Bluesky',
+                enabled: true,
+                template: '{{stream_title}}',
+                configJSON: '{"accountIdentifier":"don.test","credentialKey":"bluesky/main"}',
+                createdAt: '',
+                updatedAt: '',
+            },
+        ]);
+
+        render(<App />);
+
+        fireEvent.click(await screen.findByLabelText('Main Bluesky'));
+        fireEvent.click(screen.getByRole('button', { name: 'End Stream' }));
+
+        await waitFor(() => {
+            expect(mockedEndStream).toHaveBeenCalledWith(['discord-main']);
+        });
+    });
+
     it('hydrates platform-specific destination fields from config json', async () => {
         mockedListDestinations.mockResolvedValue([
             {
@@ -450,7 +484,7 @@ describe('App', () => {
                 name: 'Main Discord',
                 enabled: true,
                 template: '{{stream_title}}',
-                configJSON: '{"environment":"production","serverName":"My Server","channelName":"go-live","webhookKey":"discord/main"}',
+                configJSON: '{"environment":"production","serverName":"My Server","channelName":"go-live","webhookKey":"discord/main","cardThumbnailURL":"","cardThumbnailDataURL":"","endStreamEnabled":false,"endStreamTemplate":"Thanks for hanging out at {{stream_title}} {{stream_url}}"}',
                 createdAt: '',
                 updatedAt: '',
             });
@@ -485,7 +519,7 @@ describe('App', () => {
                 name: 'Main Discord',
                 enabled: true,
                 template: '{{stream_title}}',
-                configJSON: '{"environment":"production","serverName":"","channelName":"","webhookKey":"https://discord.com/api/webhooks/test"}',
+                configJSON: '{"environment":"production","serverName":"","channelName":"","webhookKey":"https://discord.com/api/webhooks/test","cardThumbnailURL":"","cardThumbnailDataURL":"","endStreamEnabled":false,"endStreamTemplate":"Thanks for hanging out at {{stream_title}} {{stream_url}}"}',
                 createdAt: '',
                 updatedAt: '',
             });
@@ -685,7 +719,7 @@ describe('App', () => {
                 name: 'Main Discord',
                 enabled: true,
                 template: '{{stream_title}}',
-                configJSON: '{"environment":"production","serverName":"My Server","channelName":"go-live","webhookKey":"discord/main"}',
+                configJSON: '{"environment":"production","serverName":"My Server","channelName":"go-live","webhookKey":"discord/main","cardThumbnailURL":"","cardThumbnailDataURL":"","endStreamEnabled":false,"endStreamTemplate":"Thanks for hanging out at {{stream_title}} {{stream_url}}"}',
                 createdAt: '',
                 updatedAt: '',
             });

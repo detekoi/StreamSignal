@@ -200,6 +200,29 @@ Residual caution:
 - local thumbnail images can still be personal content, so users should treat the local StreamSignal database as private application data
 - if StreamSignal ever accepts remote or shared configuration from untrusted users, thumbnail URL fetching should be revisited as a stricter SSRF boundary
 
+### Reviewed: Discord webhook posting and additional images
+
+Severity:
+
+- low
+
+What was checked:
+
+- webhook publishing
+- optional image URL embeds
+- optional uploaded image embeds
+- selected-destination targeting
+- destination-level End Stream enablement
+
+Result:
+
+- Discord webhook URLs are still treated as destination secrets and stored through the secret-store-backed persistence layer
+- image URLs must be valid HTTP or HTTPS URLs before posting
+- uploaded image data must be an image data URL and is rejected before decode if the encoded payload is too large
+- decoded uploaded Discord images are limited to 8 MB before posting
+- End Stream posts now respect destination-level enablement, reducing accidental cross-posting risk
+- a local secret-pattern scan after this pass found only placeholders, test fixtures, generated model field names, and expected secret-handling code references
+
 ## OWASP Alignment Notes
 
 This pass especially aligns with:

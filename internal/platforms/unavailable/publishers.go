@@ -8,7 +8,7 @@ import (
 
 type DiscordPublisher struct{}
 
-func (DiscordPublisher) Publish(context.Context, string, string) error {
+func (DiscordPublisher) Publish(context.Context, string, string, domain.DiscordPostMetadata) error {
 	return &domain.IntegrationUnavailableError{
 		Platform: domain.PlatformDiscord,
 		Message:  "Discord integration is not connected yet",

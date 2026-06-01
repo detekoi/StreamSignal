@@ -208,6 +208,7 @@ function asArray<T>(value: T[] | null | undefined): T[] {
 }
 
 const BLUESKY_CARD_THUMBNAIL_MAX_BYTES = 1_000_000;
+const DISCORD_CARD_THUMBNAIL_MAX_BYTES = 8_000_000;
 const BLUESKY_CARD_THUMBNAIL_MAX_EDGE = 1200;
 
 function fileToDataURL(file: File): Promise<string> {
@@ -249,9 +250,9 @@ function blobToDataURL(blob: Blob): Promise<string> {
     });
 }
 
-async function prepareBlueskyThumbnail(file: File): Promise<{ dataURL: string; compressed: boolean }> {
+async function prepareCardThumbnail(file: File, maxBytes: number): Promise<{ dataURL: string; compressed: boolean }> {
     const original = await fileToDataURL(file);
-    if (file.size <= BLUESKY_CARD_THUMBNAIL_MAX_BYTES) {
+    if (file.size <= maxBytes) {
         return { dataURL: original, compressed: false };
     }
 
@@ -273,12 +274,12 @@ async function prepareBlueskyThumbnail(file: File): Promise<{ dataURL: string; c
 
     for (const quality of [0.9, 0.82, 0.74, 0.66, 0.58, 0.5]) {
         const blob = await canvasToBlob(canvas, 'image/jpeg', quality);
-        if (blob.size <= BLUESKY_CARD_THUMBNAIL_MAX_BYTES) {
+        if (blob.size <= maxBytes) {
             return { dataURL: await blobToDataURL(blob), compressed: true };
         }
     }
 
-    throw new Error('Card thumbnail is too large to compress below 1 MB.');
+    throw new Error(`Card thumbnail is too large to compress below ${Math.round(maxBytes / 1_000_000)} MB.`);
 }
 
 function credentialSetupLabel(platform: DestinationInput['platform']) {
@@ -401,6 +402,7 @@ function App() {
     const [logsError, setLogsError] = useState<string | null>(null);
     const [diagnosticsStatus, setDiagnosticsStatus] = useState<string | null>(null);
     const initializedSelection = useRef(false);
+    const discordThumbnailInputRef = useRef<HTMLInputElement | null>(null);
     const blueskyThumbnailInputRef = useRef<HTMLInputElement | null>(null);
 
     useEffect(() => {
@@ -537,7 +539,13 @@ function App() {
         setPendingGoLiveConfirmation(false);
 
         try {
-            const summary = await endStream();
+            if (destinations.length > 0 && selectedDestinationIDs.length === 0) {
+                setExecutionError('Select at least one destination for this session before running this action.');
+                setExecutionSummary(null);
+                return;
+            }
+
+            const summary = await endStream(selectedDestinationIDs);
             setExecutionSummary(summary);
             await refreshPendingLiveNowSessions();
         } catch (err: unknown) {
@@ -707,6 +715,46 @@ function App() {
         updateDestination('blueskyCardThumbnailDataURL', '');
     }
 
+    function clearDiscordThumbnailImage() {
+        if (discordThumbnailInputRef.current) {
+            discordThumbnailInputRef.current.value = '';
+        }
+        updateDestination('discordCardThumbnailDataURL', '');
+    }
+
+    async function onDiscordThumbnailUpload(file: File | undefined) {
+        setDestinationConnectionResult(null);
+        setDestinationHelperStatus(null);
+        setDestinationError(null);
+
+        if (!file) {
+            return;
+        }
+        if (!file.type.startsWith('image/')) {
+            setDestinationError('Additional image must be an image.');
+            return;
+        }
+
+        try {
+            const thumbnail = await prepareCardThumbnail(file, DISCORD_CARD_THUMBNAIL_MAX_BYTES);
+            setDestinationForm((current) => ({
+                ...current,
+                discordCardThumbnailURL: '',
+                discordCardThumbnailDataURL: thumbnail.dataURL,
+            }));
+            if (discordThumbnailInputRef.current) {
+                discordThumbnailInputRef.current.value = '';
+            }
+            setDestinationHelperStatus(thumbnail.compressed ? `Selected and compressed ${file.name}` : `Selected ${file.name}`);
+        } catch (err: unknown) {
+            if (discordThumbnailInputRef.current) {
+                discordThumbnailInputRef.current.value = '';
+            }
+            const message = errorMessage(err, 'Unable to prepare selected image.');
+            setDestinationError(message);
+        }
+    }
+
     async function onBlueskyThumbnailUpload(file: File | undefined) {
         setDestinationConnectionResult(null);
         setDestinationHelperStatus(null);
@@ -721,7 +769,7 @@ function App() {
         }
 
         try {
-            const thumbnail = await prepareBlueskyThumbnail(file);
+            const thumbnail = await prepareCardThumbnail(file, BLUESKY_CARD_THUMBNAIL_MAX_BYTES);
             setDestinationForm((current) => ({
                 ...current,
                 blueskyCardThumbnailURL: '',
@@ -841,15 +889,26 @@ function App() {
 
                                     <form className="announcement-form" onSubmit={onPreviewSubmit}>
                                         <div className="form-grid">
-                                            <label className="field">
-                                                <span>Stream Title</span>
+                                            <div className="field">
+                                                <div className="field-label-row">
+                                                    <label htmlFor="stream-title">Stream Title</label>
+                                                    <button
+                                                        type="button"
+                                                        className="info-tooltip"
+                                                        aria-label="Stream Title information"
+                                                    >
+                                                        i
+                                                        <span role="tooltip">Required for Bluesky Live Now Use</span>
+                                                    </button>
+                                                </div>
                                                 <input
+                                                    id="stream-title"
                                                     aria-label="Stream Title"
                                                     value={announcement.streamTitle}
                                                     onChange={(event) => updateAnnouncement('streamTitle', event.target.value)}
                                                     placeholder="Late Night Variety"
                                                 />
-                                            </label>
+                                            </div>
 
                                             <label className="field">
                                                 <span>Stream URL</span>
@@ -937,7 +996,8 @@ function App() {
                                                             <span className="session-destination-copy">
                                                                 <strong>{destination.name}</strong>
                                                                 <small>
-                                                                    {destination.platform} · {destinationEnvironmentLabel(destinationEnvironmentFrom(destination))}
+                                                                    {destination.platform} · {destinationEnvironmentLabel(destinationEnvironmentFrom(destination))} ·{' '}
+                                                                    {toDestinationFormState(destination).endStreamEnabled ? 'End Stream on' : 'End Stream off'}
                                                                 </small>
                                                             </span>
                                                         </label>
@@ -976,7 +1036,7 @@ function App() {
                                                 <h2>Preview Panel</h2>
                                                 <p>See the exact message each selected destination will receive.</p>
                                             </div>
-                                            <span>{previewItems.length} destinations</span>
+                                            <span>{previewItems.length} messages</span>
                                         </div>
 
                                     {previewError ? <p className="error-banner">{previewError}</p> : null}
@@ -995,11 +1055,13 @@ function App() {
                                     ) : (
                                         <div className="preview-list">
                                             {previewItems.map((item) => (
-                                                <section key={item.destinationID} className="preview-card">
+                                                <section key={`${item.destinationID}-${item.previewLabel || 'preview'}`} className="preview-card">
                                                     <div className="preview-topline">
                                                         <div>
                                                             <h3>{item.destinationName}</h3>
-                                                            <p className="preview-platform">{item.platform}</p>
+                                                            <p className="preview-platform">
+                                                                {item.previewLabel || 'Preview'} · {item.platform}
+                                                            </p>
                                                         </div>
                                                         <span className={`preview-status status-${item.validationState.toLowerCase()}`}>
                                                             {item.validationState}
@@ -1286,6 +1348,36 @@ function App() {
                                     </div>
                                 </section>
 
+                                <section className="mini-panel template-helper-panel">
+                                    <div className="template-helper-header">
+                                        <h3>End Stream Message</h3>
+                                        <label className="checkbox-field">
+                                            <input
+                                                type="checkbox"
+                                                aria-label="End Stream Enabled"
+                                                checked={destinationForm.endStreamEnabled}
+                                                onChange={(event) => updateDestination('endStreamEnabled', event.target.checked)}
+                                            />
+                                            <span>Enabled</span>
+                                        </label>
+                                    </div>
+                                    <label className="field">
+                                        <span>End Stream Template</span>
+                                        <textarea
+                                            aria-label="Destination End Stream Template"
+                                            value={destinationForm.endStreamTemplate}
+                                            onChange={(event) => updateDestination('endStreamTemplate', event.target.value)}
+                                            rows={3}
+                                        />
+                                    </label>
+                                    <p>
+                                        Uses:{' '}
+                                        {usedTemplateVariables(destinationForm.endStreamTemplate).length > 0
+                                            ? usedTemplateVariables(destinationForm.endStreamTemplate).join(', ')
+                                            : 'no announcement fields yet'}
+                                    </p>
+                                </section>
+
                                 {destinationForm.platform === 'discord' ? (
                                     <>
                                         <label className="field">
@@ -1315,6 +1407,63 @@ function App() {
                                                 placeholder="https://discord.com/api/webhooks/..."
                                             />
                                         </label>
+                                        <label className="field">
+                                            <div className="field-label-row">
+                                                <span>Additional Image URL</span>
+                                                <button
+                                                    type="button"
+                                                    className="info-tooltip"
+                                                    aria-label="Discord additional image information"
+                                                >
+                                                    i
+                                                    <span role="tooltip">Discord may show this image instead of its native link preview.</span>
+                                                </button>
+                                            </div>
+                                            <input
+                                                aria-label="Discord Additional Image URL"
+                                                value={destinationForm.discordCardThumbnailURL}
+                                                onChange={(event) => {
+                                                    updateDestination('discordCardThumbnailURL', event.target.value);
+                                                    if (event.target.value.trim() !== '') {
+                                                        clearDiscordThumbnailImage();
+                                                    }
+                                                }}
+                                                placeholder="https://static-cdn.jtvnw.net/..."
+                                            />
+                                        </label>
+                                        <label className="field">
+                                            <div className="field-label-row">
+                                                <span>Additional Image Upload</span>
+                                                <button
+                                                    type="button"
+                                                    className="info-tooltip"
+                                                    aria-label="Discord additional image upload information"
+                                                >
+                                                    i
+                                                    <span role="tooltip">Discord may show this image instead of its native link preview.</span>
+                                                </button>
+                                            </div>
+                                            <input
+                                                ref={discordThumbnailInputRef}
+                                                aria-label="Discord Additional Image Upload"
+                                                type="file"
+                                                accept="image/*"
+                                                onChange={(event) => void onDiscordThumbnailUpload(event.target.files?.[0])}
+                                            />
+                                            <small>Large images are resized before posting.</small>
+                                        </label>
+                                        {destinationForm.discordCardThumbnailDataURL ? (
+                                            <div className="form-actions">
+                                                <span>Uploaded image selected</span>
+                                                <button
+                                                    type="button"
+                                                    className="ghost-button"
+                                                    onClick={clearDiscordThumbnailImage}
+                                                >
+                                                    Clear Image
+                                                </button>
+                                            </div>
+                                        ) : null}
                                     </>
                                 ) : null}
 
@@ -1533,16 +1682,6 @@ function App() {
                                 <span>Duplicate Protection Enabled</span>
                             </label>
 
-                            <label className="field checkbox-field">
-                                <input
-                                    aria-label="End Stream Post Enabled"
-                                    type="checkbox"
-                                    checked={settings.endStreamPostEnabled}
-                                    onChange={(event) => updateSettings('endStreamPostEnabled', event.target.checked)}
-                                />
-                                <span>End Stream Post Enabled</span>
-                            </label>
-
                             <label className="field">
                                 <span>Default Stream URL</span>
                                 <input
@@ -1571,17 +1710,6 @@ function App() {
                                     min={1}
                                     value={settings.duplicateWindowMinutes}
                                     onChange={(event) => updateSettings('duplicateWindowMinutes', Number(event.target.value))}
-                                />
-                            </label>
-
-                            <label className="field panel-wide">
-                                <span>End Stream Template</span>
-                                <textarea
-                                    aria-label="End Stream Template"
-                                    value={settings.endStreamTemplate}
-                                    onChange={(event) => updateSettings('endStreamTemplate', event.target.value)}
-                                    placeholder="Thanks for hanging out!"
-                                    rows={4}
                                 />
                             </label>
 

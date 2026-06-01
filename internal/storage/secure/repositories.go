@@ -28,10 +28,14 @@ type LiveNowSessionRepository struct {
 }
 
 type discordDestinationConfig struct {
-	Environment string `json:"environment,omitempty"`
-	ServerName  string `json:"serverName,omitempty"`
-	ChannelName string `json:"channelName,omitempty"`
-	WebhookKey  string `json:"webhookKey,omitempty"`
+	Environment          string `json:"environment,omitempty"`
+	ServerName           string `json:"serverName,omitempty"`
+	ChannelName          string `json:"channelName,omitempty"`
+	WebhookKey           string `json:"webhookKey,omitempty"`
+	CardThumbnailURL     string `json:"cardThumbnailURL,omitempty"`
+	CardThumbnailDataURL string `json:"cardThumbnailDataURL,omitempty"`
+	EndStreamEnabled     bool   `json:"endStreamEnabled,omitempty"`
+	EndStreamTemplate    string `json:"endStreamTemplate,omitempty"`
 }
 
 type blueskyDestinationConfig struct {
@@ -42,6 +46,8 @@ type blueskyDestinationConfig struct {
 	LiveNowDurationMinutes int    `json:"liveNowDurationMinutes,omitempty"`
 	CardThumbnailURL       string `json:"cardThumbnailURL,omitempty"`
 	CardThumbnailDataURL   string `json:"cardThumbnailDataURL,omitempty"`
+	EndStreamEnabled       bool   `json:"endStreamEnabled,omitempty"`
+	EndStreamTemplate      string `json:"endStreamTemplate,omitempty"`
 }
 
 type mastodonDestinationConfig struct {
@@ -49,6 +55,8 @@ type mastodonDestinationConfig struct {
 	AccountIdentifier string `json:"accountIdentifier,omitempty"`
 	InstanceURL       string `json:"instanceURL,omitempty"`
 	CredentialKey     string `json:"credentialKey,omitempty"`
+	EndStreamEnabled  bool   `json:"endStreamEnabled,omitempty"`
+	EndStreamTemplate string `json:"endStreamTemplate,omitempty"`
 }
 
 func NewDestinationRepository(inner ports.DestinationRepository, secrets ports.SecretStore) *DestinationRepository {

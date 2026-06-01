@@ -6,7 +6,7 @@ export function ClearPendingLiveNowSession(arg1:string):Promise<domain.Execution
 
 export function DeleteDestination(arg1:string):Promise<void>;
 
-export function EndStream():Promise<domain.ExecutionSummary>;
+export function EndStream(arg1:domain.Announcement):Promise<domain.ExecutionSummary>;
 
 export function ForceGoLive(arg1:domain.Announcement):Promise<domain.ExecutionSummary>;
 

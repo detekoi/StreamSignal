@@ -10,6 +10,7 @@ export interface PreviewItem {
     destinationID: string;
     destinationName: string;
     platform: string;
+    previewLabel?: string;
     content: string;
     characterCount: number;
     validationState: string;

@@ -81,6 +81,7 @@ type PreviewItem struct {
 	DestinationID   string              `json:"destinationID"`
 	DestinationName string              `json:"destinationName"`
 	Platform        DestinationPlatform `json:"platform"`
+	PreviewLabel    string              `json:"previewLabel"`
 	Content         string              `json:"content"`
 	CharacterCount  int                 `json:"characterCount"`
 	ValidationState string              `json:"validationState"`
@@ -106,6 +107,11 @@ type BlueskyPostMetadata struct {
 	StreamURL        string
 	StreamTitle      string
 	Description      string
+	ThumbnailURL     string
+	ThumbnailDataURL string
+}
+
+type DiscordPostMetadata struct {
 	ThumbnailURL     string
 	ThumbnailDataURL string
 }

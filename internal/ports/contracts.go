@@ -48,7 +48,7 @@ type SecretStore interface {
 }
 
 type DiscordPublisher interface {
-	Publish(ctx context.Context, webhookKey string, content string) error
+	Publish(ctx context.Context, webhookKey string, content string, metadata domain.DiscordPostMetadata) error
 }
 
 type DiscordCredentialVerifier interface {

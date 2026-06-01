@@ -83,6 +83,17 @@ Recent workflow work added or updated tests for:
 - Bluesky `Live Now` duration configuration, set, clear, and recovery behavior
 - defensive thumbnail validation for non-image, oversized, and non-HTTP inputs
 
+## Current Discord And End Stream Coverage
+
+Recent workflow work added or updated tests for:
+
+- selected-destination targeting for Go Live and End Stream
+- Discord webhook publishing with optional image URL and uploaded image embeds
+- Discord image validation for non-HTTP image URLs and oversized uploaded images
+- destination-level End Stream enablement and template rendering
+- disabled End Stream destinations producing skipped execution results instead of posts
+- combined Preview output that includes Go Live messages plus enabled End Stream messages in one network-free preview pass
+
 ## Standard For Future Work
 
 Use this rule of thumb before calling a feature "well tested":
