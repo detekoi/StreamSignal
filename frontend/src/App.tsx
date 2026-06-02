@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import './App.css';
+import streamSignalIcon from './assets/images/streamsignal-icon.png';
 import {
     clearPendingLiveNowSession,
     deleteDestination,
@@ -37,6 +38,7 @@ import type { AppSettings } from './types/settings';
 type TabKey = 'home' | 'destinations' | 'settings' | 'logs';
 
 const STORED_SECRET_TOKEN = '[stored securely]';
+const SHOW_DEBUG_WORKFLOW_UI = import.meta.env.DEV || import.meta.env.MODE === 'debug';
 
 const initialAnnouncement: AnnouncementInput = {
     streamTitle: '',
@@ -49,21 +51,11 @@ const initialAnnouncement: AnnouncementInput = {
 const initialDestination = createEmptyDestinationForm();
 
 const defaultSettings: AppSettings = {
-    testModeEnabled: false,
-    testDiscordWebhookKey: '',
-    testBlueskyAccountIdentifier: '',
-    testBlueskyCredentialKey: '',
-    testMastodonCredentialKey: '',
-    testMastodonInstanceURL: '',
     defaultStreamURL: '',
     defaultHashtags: '',
     duplicateProtectionEnabled: true,
     duplicateWindowMinutes: 10,
-    endStreamPostEnabled: false,
-    endStreamTemplate: '',
 };
-
-type SecretSettingsCache = Pick<AppSettings, 'testDiscordWebhookKey' | 'testBlueskyCredentialKey' | 'testMastodonCredentialKey'>;
 
 type DestinationSecretCache = Pick<DestinationFormState, 'discordWebhookKey' | 'blueskyCredentialKey' | 'mastodonCredentialKey'>;
 
@@ -161,23 +153,6 @@ function resolveSecretInput(value: string, storedValue: string) {
     return value;
 }
 
-function settingsSecretCacheFrom(settings: AppSettings): SecretSettingsCache {
-    return {
-        testDiscordWebhookKey: settings.testDiscordWebhookKey,
-        testBlueskyCredentialKey: settings.testBlueskyCredentialKey,
-        testMastodonCredentialKey: settings.testMastodonCredentialKey,
-    };
-}
-
-function toMaskedSettings(settings: AppSettings): AppSettings {
-    return {
-        ...settings,
-        testDiscordWebhookKey: maskSecretValue(settings.testDiscordWebhookKey),
-        testBlueskyCredentialKey: maskSecretValue(settings.testBlueskyCredentialKey),
-        testMastodonCredentialKey: maskSecretValue(settings.testMastodonCredentialKey),
-    };
-}
-
 function destinationSecretCacheFrom(form: DestinationFormState): DestinationSecretCache {
     return {
         discordWebhookKey: form.discordWebhookKey,
@@ -208,6 +183,9 @@ function asArray<T>(value: T[] | null | undefined): T[] {
 }
 
 const BLUESKY_CARD_THUMBNAIL_MAX_BYTES = 1_000_000;
+const BLUESKY_ADDITIONAL_IMAGE_MAX_BYTES = 1_000_000;
+const DISCORD_CARD_THUMBNAIL_MAX_BYTES = 8_000_000;
+const MASTODON_ADDITIONAL_IMAGE_MAX_BYTES = 8_000_000;
 const BLUESKY_CARD_THUMBNAIL_MAX_EDGE = 1200;
 
 function fileToDataURL(file: File): Promise<string> {
@@ -249,9 +227,9 @@ function blobToDataURL(blob: Blob): Promise<string> {
     });
 }
 
-async function prepareBlueskyThumbnail(file: File): Promise<{ dataURL: string; compressed: boolean }> {
+async function prepareCardThumbnail(file: File, maxBytes: number): Promise<{ dataURL: string; compressed: boolean }> {
     const original = await fileToDataURL(file);
-    if (file.size <= BLUESKY_CARD_THUMBNAIL_MAX_BYTES) {
+    if (file.size <= maxBytes) {
         return { dataURL: original, compressed: false };
     }
 
@@ -273,12 +251,12 @@ async function prepareBlueskyThumbnail(file: File): Promise<{ dataURL: string; c
 
     for (const quality of [0.9, 0.82, 0.74, 0.66, 0.58, 0.5]) {
         const blob = await canvasToBlob(canvas, 'image/jpeg', quality);
-        if (blob.size <= BLUESKY_CARD_THUMBNAIL_MAX_BYTES) {
+        if (blob.size <= maxBytes) {
             return { dataURL: await blobToDataURL(blob), compressed: true };
         }
     }
 
-    throw new Error('Card thumbnail is too large to compress below 1 MB.');
+    throw new Error(`Card thumbnail is too large to compress below ${Math.round(maxBytes / 1_000_000)} MB.`);
 }
 
 function credentialSetupLabel(platform: DestinationInput['platform']) {
@@ -329,16 +307,28 @@ function guidedSetupSteps(platform: DestinationInput['platform']): GuidedSetupSt
         case 'mastodon':
             return [
                 {
-                    title: 'Step 1: Create a posting token',
-                    detail: 'In your Mastodon account settings, create an access token with permission to post statuses, then copy the token and your instance URL.',
+                    title: 'Step 1: Open your Mastodon instance',
+                    detail: 'Sign in to the account StreamSignal should post from, then open Preferences > Development. On some instances this is under Settings > Development.',
                 },
                 {
-                    title: 'Step 2: Paste the instance URL and token',
-                    detail: 'Use the full instance URL, like https://mastodon.social, plus the token that belongs to the account you want StreamSignal to use.',
+                    title: 'Step 2: Create a new application',
+                    detail: 'Name it StreamSignal. If Mastodon asks for a website, you can leave it blank or use your stream/profile URL.',
                 },
                 {
-                    title: 'Step 3: Verify the token before saving',
-                    detail: 'Test Connection checks the token against your Mastodon account so invalid or expired tokens fail early.',
+                    title: 'Step 3: Set the redirect URI',
+                    detail: 'Use urn:ietf:wg:oauth:2.0:oob if the field is required. StreamSignal only needs a manually copied access token and does not run an OAuth redirect server.',
+                },
+                {
+                    title: 'Step 4: Choose scopes',
+                    detail: 'Enable write:statuses so StreamSignal can publish posts. If your instance requires account verification for token testing, also enable read:accounts.',
+                },
+                {
+                    title: 'Step 5: Copy the access token',
+                    detail: 'After saving the application, copy the generated access token. Paste the full instance URL, like https://mastodon.social, and the access token into StreamSignal.',
+                },
+                {
+                    title: 'Step 6: Test before saving',
+                    detail: 'Test Connection checks the token against your Mastodon account so invalid, expired, or under-scoped tokens fail early.',
                 },
             ];
         default:
@@ -390,23 +380,23 @@ function App() {
     const [showGuidedSetup, setShowGuidedSetup] = useState(false);
 
     const [settings, setSettings] = useState<AppSettings>(defaultSettings);
-    const [settingsSecrets, setSettingsSecrets] = useState<SecretSettingsCache>({
-        testDiscordWebhookKey: '',
-        testBlueskyCredentialKey: '',
-        testMastodonCredentialKey: '',
-    });
     const [settingsStatus, setSettingsStatus] = useState<string | null>(null);
     const [settingsError, setSettingsError] = useState<string | null>(null);
     const [logs, setLogs] = useState<LogEntry[]>([]);
     const [logsError, setLogsError] = useState<string | null>(null);
     const [diagnosticsStatus, setDiagnosticsStatus] = useState<string | null>(null);
     const initializedSelection = useRef(false);
+    const discordThumbnailInputRef = useRef<HTMLInputElement | null>(null);
     const blueskyThumbnailInputRef = useRef<HTMLInputElement | null>(null);
+    const blueskyAdditionalImageInputRef = useRef<HTMLInputElement | null>(null);
+    const mastodonAdditionalImageInputRef = useRef<HTMLInputElement | null>(null);
 
     useEffect(() => {
         void refreshDestinations();
         void refreshSettings();
-        void refreshLogs();
+        if (SHOW_DEBUG_WORKFLOW_UI) {
+            void refreshLogs();
+        }
         void refreshPendingLiveNowSessions();
     }, []);
 
@@ -434,8 +424,7 @@ function App() {
     async function refreshSettings() {
         try {
             const current = await getSettings();
-            setSettingsSecrets(settingsSecretCacheFrom(current));
-            setSettings(toMaskedSettings(current));
+            setSettings(current);
             setAnnouncement((existing) => applyAnnouncementDefaults(existing, current));
         } catch (err: unknown) {
             const message = errorMessage(err, 'Unable to load settings.');
@@ -537,7 +526,13 @@ function App() {
         setPendingGoLiveConfirmation(false);
 
         try {
-            const summary = await endStream();
+            if (destinations.length > 0 && selectedDestinationIDs.length === 0) {
+                setExecutionError('Select at least one destination for this session before running this action.');
+                setExecutionSummary(null);
+                return;
+            }
+
+            const summary = await endStream(selectedDestinationIDs);
             setExecutionSummary(summary);
             await refreshPendingLiveNowSessions();
         } catch (err: unknown) {
@@ -649,15 +644,8 @@ function App() {
         setSettingsStatus(null);
 
         try {
-            const resolvedSettings: AppSettings = {
-                ...settings,
-                testDiscordWebhookKey: resolveSecretInput(settings.testDiscordWebhookKey, settingsSecrets.testDiscordWebhookKey),
-                testBlueskyCredentialKey: resolveSecretInput(settings.testBlueskyCredentialKey, settingsSecrets.testBlueskyCredentialKey),
-                testMastodonCredentialKey: resolveSecretInput(settings.testMastodonCredentialKey, settingsSecrets.testMastodonCredentialKey),
-            };
-            const saved = await saveSettings(resolvedSettings);
-            setSettingsSecrets(settingsSecretCacheFrom(saved));
-            setSettings(toMaskedSettings(saved));
+            const saved = await saveSettings(settings);
+            setSettings(saved);
             setAnnouncement((existing) => applyAnnouncementDefaults(existing, saved));
             setSettingsStatus('Settings saved.');
         } catch (err: unknown) {
@@ -707,6 +695,60 @@ function App() {
         updateDestination('blueskyCardThumbnailDataURL', '');
     }
 
+    function clearBlueskyAdditionalImage() {
+        if (blueskyAdditionalImageInputRef.current) {
+            blueskyAdditionalImageInputRef.current.value = '';
+        }
+        updateDestination('blueskyAdditionalImageDataURL', '');
+    }
+
+    function clearMastodonAdditionalImage() {
+        if (mastodonAdditionalImageInputRef.current) {
+            mastodonAdditionalImageInputRef.current.value = '';
+        }
+        updateDestination('mastodonAdditionalImageDataURL', '');
+    }
+
+    function clearDiscordThumbnailImage() {
+        if (discordThumbnailInputRef.current) {
+            discordThumbnailInputRef.current.value = '';
+        }
+        updateDestination('discordCardThumbnailDataURL', '');
+    }
+
+    async function onDiscordThumbnailUpload(file: File | undefined) {
+        setDestinationConnectionResult(null);
+        setDestinationHelperStatus(null);
+        setDestinationError(null);
+
+        if (!file) {
+            return;
+        }
+        if (!file.type.startsWith('image/')) {
+            setDestinationError('Additional image must be an image.');
+            return;
+        }
+
+        try {
+            const thumbnail = await prepareCardThumbnail(file, DISCORD_CARD_THUMBNAIL_MAX_BYTES);
+            setDestinationForm((current) => ({
+                ...current,
+                discordCardThumbnailURL: '',
+                discordCardThumbnailDataURL: thumbnail.dataURL,
+            }));
+            if (discordThumbnailInputRef.current) {
+                discordThumbnailInputRef.current.value = '';
+            }
+            setDestinationHelperStatus(thumbnail.compressed ? `Selected and compressed ${file.name}` : `Selected ${file.name}`);
+        } catch (err: unknown) {
+            if (discordThumbnailInputRef.current) {
+                discordThumbnailInputRef.current.value = '';
+            }
+            const message = errorMessage(err, 'Unable to prepare selected image.');
+            setDestinationError(message);
+        }
+    }
+
     async function onBlueskyThumbnailUpload(file: File | undefined) {
         setDestinationConnectionResult(null);
         setDestinationHelperStatus(null);
@@ -721,7 +763,7 @@ function App() {
         }
 
         try {
-            const thumbnail = await prepareBlueskyThumbnail(file);
+            const thumbnail = await prepareCardThumbnail(file, BLUESKY_CARD_THUMBNAIL_MAX_BYTES);
             setDestinationForm((current) => ({
                 ...current,
                 blueskyCardThumbnailURL: '',
@@ -734,6 +776,72 @@ function App() {
         } catch (err: unknown) {
             if (blueskyThumbnailInputRef.current) {
                 blueskyThumbnailInputRef.current.value = '';
+            }
+            const message = errorMessage(err, 'Unable to prepare selected image.');
+            setDestinationError(message);
+        }
+    }
+
+    async function onBlueskyAdditionalImageUpload(file: File | undefined) {
+        setDestinationConnectionResult(null);
+        setDestinationHelperStatus(null);
+        setDestinationError(null);
+
+        if (!file) {
+            return;
+        }
+        if (!file.type.startsWith('image/')) {
+            setDestinationError('Additional image must be an image.');
+            return;
+        }
+
+        try {
+            const image = await prepareCardThumbnail(file, BLUESKY_ADDITIONAL_IMAGE_MAX_BYTES);
+            setDestinationForm((current) => ({
+                ...current,
+                blueskyAdditionalImageURL: '',
+                blueskyAdditionalImageDataURL: image.dataURL,
+            }));
+            if (blueskyAdditionalImageInputRef.current) {
+                blueskyAdditionalImageInputRef.current.value = '';
+            }
+            setDestinationHelperStatus(image.compressed ? `Selected and compressed ${file.name}` : `Selected ${file.name}`);
+        } catch (err: unknown) {
+            if (blueskyAdditionalImageInputRef.current) {
+                blueskyAdditionalImageInputRef.current.value = '';
+            }
+            const message = errorMessage(err, 'Unable to prepare selected image.');
+            setDestinationError(message);
+        }
+    }
+
+    async function onMastodonAdditionalImageUpload(file: File | undefined) {
+        setDestinationConnectionResult(null);
+        setDestinationHelperStatus(null);
+        setDestinationError(null);
+
+        if (!file) {
+            return;
+        }
+        if (!file.type.startsWith('image/')) {
+            setDestinationError('Additional image must be an image.');
+            return;
+        }
+
+        try {
+            const image = await prepareCardThumbnail(file, MASTODON_ADDITIONAL_IMAGE_MAX_BYTES);
+            setDestinationForm((current) => ({
+                ...current,
+                mastodonAdditionalImageURL: '',
+                mastodonAdditionalImageDataURL: image.dataURL,
+            }));
+            if (mastodonAdditionalImageInputRef.current) {
+                mastodonAdditionalImageInputRef.current.value = '';
+            }
+            setDestinationHelperStatus(image.compressed ? `Selected and compressed ${file.name}` : `Selected ${file.name}`);
+        } catch (err: unknown) {
+            if (mastodonAdditionalImageInputRef.current) {
+                mastodonAdditionalImageInputRef.current.value = '';
             }
             const message = errorMessage(err, 'Unable to prepare selected image.');
             setDestinationError(message);
@@ -776,6 +884,7 @@ function App() {
             <div className="app-frame">
                 <header className="panel app-header">
                     <div className="app-header-copy">
+                        <img src={streamSignalIcon} alt="" className="app-logo" aria-hidden="true" />
                         <h1>StreamSignal</h1>
                     </div>
                     <nav className="tab-bar" aria-label="Primary navigation">
@@ -800,13 +909,15 @@ function App() {
                             >
                                 Settings
                             </button>
-                            <button
-                                aria-label="Logs"
-                                className={selectedTab === 'logs' ? 'tab-button active' : 'tab-button'}
-                                onClick={() => setSelectedTab('logs')}
-                            >
-                                Logs
-                            </button>
+                            {SHOW_DEBUG_WORKFLOW_UI ? (
+                                <button
+                                    aria-label="Logs"
+                                    className={selectedTab === 'logs' ? 'tab-button active' : 'tab-button'}
+                                    onClick={() => setSelectedTab('logs')}
+                                >
+                                    Logs
+                                </button>
+                            ) : null}
                     </nav>
                 </header>
 
@@ -841,15 +952,26 @@ function App() {
 
                                     <form className="announcement-form" onSubmit={onPreviewSubmit}>
                                         <div className="form-grid">
-                                            <label className="field">
-                                                <span>Stream Title</span>
+                                            <div className="field">
+                                                <div className="field-label-row">
+                                                    <label htmlFor="stream-title">Stream Title</label>
+                                                    <button
+                                                        type="button"
+                                                        className="info-tooltip"
+                                                        aria-label="Stream Title information"
+                                                    >
+                                                        i
+                                                        <span role="tooltip">Required for Bluesky Live Now Use</span>
+                                                    </button>
+                                                </div>
                                                 <input
+                                                    id="stream-title"
                                                     aria-label="Stream Title"
                                                     value={announcement.streamTitle}
                                                     onChange={(event) => updateAnnouncement('streamTitle', event.target.value)}
                                                     placeholder="Late Night Variety"
                                                 />
-                                            </label>
+                                            </div>
 
                                             <label className="field">
                                                 <span>Stream URL</span>
@@ -937,7 +1059,8 @@ function App() {
                                                             <span className="session-destination-copy">
                                                                 <strong>{destination.name}</strong>
                                                                 <small>
-                                                                    {destination.platform} · {destinationEnvironmentLabel(destinationEnvironmentFrom(destination))}
+                                                                    {destination.platform} · {destinationEnvironmentLabel(destinationEnvironmentFrom(destination))} ·{' '}
+                                                                    {toDestinationFormState(destination).endStreamEnabled ? 'End Stream on' : 'End Stream off'}
                                                                 </small>
                                                             </span>
                                                         </label>
@@ -967,6 +1090,37 @@ function App() {
                                                 {executionLoading === 'end_stream' ? 'Ending Stream...' : 'End Stream'}
                                             </button>
                                         </div>
+
+                                        {!SHOW_DEBUG_WORKFLOW_UI ? (
+                                            <section className="release-workflow-status" aria-live="polite">
+                                                {executionError ? <p className="error-banner">{executionError}</p> : null}
+                                                {executionStatusMessage(executionSummary) ? (
+                                                    <div className={executionSummary?.status === 'PARTIAL' ? 'error-banner' : 'warning-banner'}>
+                                                        <p>{executionStatusMessage(executionSummary)}</p>
+                                                    </div>
+                                                ) : null}
+                                                {pendingGoLiveConfirmation ? (
+                                                    <div className="warning-banner">
+                                                        <p>{executionSummary?.duplicateWarningMessage}</p>
+                                                        <div className="form-actions">
+                                                            <button
+                                                                type="button"
+                                                                className="primary-button"
+                                                                onClick={() => void onConfirmGoLive()}
+                                                                disabled={executionLoading !== null}
+                                                            >
+                                                                {executionLoading === 'go_live' ? 'Confirming...' : 'Confirm Go Live'}
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ) : null}
+                                                {executionSummary && !pendingGoLiveConfirmation && !executionStatusMessage(executionSummary) ? (
+                                                    <p className="success-banner">
+                                                        {executionSummary.mode === 'end_stream' ? 'End Stream completed.' : 'Go Live completed.'}
+                                                    </p>
+                                                ) : null}
+                                            </section>
+                                        ) : null}
                                     </form>
                                 </article>
 
@@ -976,7 +1130,7 @@ function App() {
                                                 <h2>Preview Panel</h2>
                                                 <p>See the exact message each selected destination will receive.</p>
                                             </div>
-                                            <span>{previewItems.length} destinations</span>
+                                            <span>{previewItems.length} messages</span>
                                         </div>
 
                                     {previewError ? <p className="error-banner">{previewError}</p> : null}
@@ -995,11 +1149,13 @@ function App() {
                                     ) : (
                                         <div className="preview-list">
                                             {previewItems.map((item) => (
-                                                <section key={item.destinationID} className="preview-card">
+                                                <section key={`${item.destinationID}-${item.previewLabel || 'preview'}`} className="preview-card">
                                                     <div className="preview-topline">
                                                         <div>
                                                             <h3>{item.destinationName}</h3>
-                                                            <p className="preview-platform">{item.platform}</p>
+                                                            <p className="preview-platform">
+                                                                {item.previewLabel || 'Preview'} · {item.platform}
+                                                            </p>
                                                         </div>
                                                         <span className={`preview-status status-${item.validationState.toLowerCase()}`}>
                                                             {item.validationState}
@@ -1028,6 +1184,7 @@ function App() {
                                     )}
                                 </article>
 
+                                {SHOW_DEBUG_WORKFLOW_UI ? (
                                 <article className="panel">
                                     <div className="panel-header">
                                         <h2>Execution Results</h2>
@@ -1111,6 +1268,7 @@ function App() {
                                 </>
                             )}
                                 </article>
+                                ) : null}
                             </>
                         ) : null}
 
@@ -1138,7 +1296,7 @@ function App() {
                                                     setDestinationHelperStatus(null);
                                                 }}
                                             >
-                                                New Destination
+                                                Reset Form
                                             </button>
                                         </div>
                                     </div>
@@ -1286,6 +1444,36 @@ function App() {
                                     </div>
                                 </section>
 
+                                <section className="mini-panel template-helper-panel">
+                                    <div className="template-helper-header">
+                                        <h3>End Stream Message</h3>
+                                        <label className="checkbox-field">
+                                            <input
+                                                type="checkbox"
+                                                aria-label="End Stream Enabled"
+                                                checked={destinationForm.endStreamEnabled}
+                                                onChange={(event) => updateDestination('endStreamEnabled', event.target.checked)}
+                                            />
+                                            <span>Enabled</span>
+                                        </label>
+                                    </div>
+                                    <label className="field">
+                                        <span>End Stream Template</span>
+                                        <textarea
+                                            aria-label="Destination End Stream Template"
+                                            value={destinationForm.endStreamTemplate}
+                                            onChange={(event) => updateDestination('endStreamTemplate', event.target.value)}
+                                            rows={3}
+                                        />
+                                    </label>
+                                    <p>
+                                        Uses:{' '}
+                                        {usedTemplateVariables(destinationForm.endStreamTemplate).length > 0
+                                            ? usedTemplateVariables(destinationForm.endStreamTemplate).join(', ')
+                                            : 'no announcement fields yet'}
+                                    </p>
+                                </section>
+
                                 {destinationForm.platform === 'discord' ? (
                                     <>
                                         <label className="field">
@@ -1315,6 +1503,63 @@ function App() {
                                                 placeholder="https://discord.com/api/webhooks/..."
                                             />
                                         </label>
+                                        <label className="field">
+                                            <div className="field-label-row">
+                                                <span>Additional Image URL</span>
+                                                <button
+                                                    type="button"
+                                                    className="info-tooltip"
+                                                    aria-label="Discord additional image information"
+                                                >
+                                                    i
+                                                    <span role="tooltip">Discord may show this image instead of its native link preview.</span>
+                                                </button>
+                                            </div>
+                                            <input
+                                                aria-label="Discord Additional Image URL"
+                                                value={destinationForm.discordCardThumbnailURL}
+                                                onChange={(event) => {
+                                                    updateDestination('discordCardThumbnailURL', event.target.value);
+                                                    if (event.target.value.trim() !== '') {
+                                                        clearDiscordThumbnailImage();
+                                                    }
+                                                }}
+                                                placeholder="https://static-cdn.jtvnw.net/..."
+                                            />
+                                        </label>
+                                        <label className="field">
+                                            <div className="field-label-row">
+                                                <span>Additional Image Upload</span>
+                                                <button
+                                                    type="button"
+                                                    className="info-tooltip"
+                                                    aria-label="Discord additional image upload information"
+                                                >
+                                                    i
+                                                    <span role="tooltip">Discord may show this image instead of its native link preview.</span>
+                                                </button>
+                                            </div>
+                                            <input
+                                                ref={discordThumbnailInputRef}
+                                                aria-label="Discord Additional Image Upload"
+                                                type="file"
+                                                accept="image/*"
+                                                onChange={(event) => void onDiscordThumbnailUpload(event.target.files?.[0])}
+                                            />
+                                            <small>Large images are resized before posting.</small>
+                                        </label>
+                                        {destinationForm.discordCardThumbnailDataURL ? (
+                                            <div className="form-actions">
+                                                <span>Uploaded image selected</span>
+                                                <button
+                                                    type="button"
+                                                    className="ghost-button"
+                                                    onClick={clearDiscordThumbnailImage}
+                                                >
+                                                    Clear Image
+                                                </button>
+                                            </div>
+                                        ) : null}
                                     </>
                                 ) : null}
 
@@ -1360,9 +1605,19 @@ function App() {
                                             />
                                         </label>
                                         <label className="field">
-                                            <span>Card Thumbnail URL</span>
+                                            <div className="field-label-row">
+                                                <span>Preview Card Image URL</span>
+                                                <button
+                                                    type="button"
+                                                    className="info-tooltip"
+                                                    aria-label="Bluesky preview card image information"
+                                                >
+                                                    i
+                                                    <span role="tooltip">Bluesky only. Used as the stream link preview card image.</span>
+                                                </button>
+                                            </div>
                                             <input
-                                                aria-label="Card Thumbnail URL"
+                                                aria-label="Bluesky Preview Card Image URL"
                                                 value={destinationForm.blueskyCardThumbnailURL}
                                                 onChange={(event) => {
                                                     updateDestination('blueskyCardThumbnailURL', event.target.value);
@@ -1374,10 +1629,20 @@ function App() {
                                             />
                                         </label>
                                         <label className="field">
-                                            <span>Card Thumbnail Image</span>
+                                            <div className="field-label-row">
+                                                <span>Preview Card Image Upload</span>
+                                                <button
+                                                    type="button"
+                                                    className="info-tooltip"
+                                                    aria-label="Bluesky preview card image upload information"
+                                                >
+                                                    i
+                                                    <span role="tooltip">Bluesky only. Used as the stream link preview card image.</span>
+                                                </button>
+                                            </div>
                                             <input
                                                 ref={blueskyThumbnailInputRef}
-                                                aria-label="Card Thumbnail Image"
+                                                aria-label="Bluesky Preview Card Image Upload"
                                                 type="file"
                                                 accept="image/*"
                                                 onChange={(event) => void onBlueskyThumbnailUpload(event.target.files?.[0])}
@@ -1386,11 +1651,68 @@ function App() {
                                         </label>
                                         {destinationForm.blueskyCardThumbnailDataURL ? (
                                             <div className="form-actions">
-                                                <span>Uploaded thumbnail selected</span>
+                                                <span>Uploaded preview card image selected</span>
                                                 <button
                                                     type="button"
                                                     className="ghost-button"
                                                     onClick={clearBlueskyThumbnailImage}
+                                                >
+                                                    Clear Image
+                                                </button>
+                                            </div>
+                                        ) : null}
+                                        <label className="field">
+                                            <div className="field-label-row">
+                                                <span>Additional Image URL</span>
+                                                <button
+                                                    type="button"
+                                                    className="info-tooltip"
+                                                    aria-label="Bluesky additional image information"
+                                                >
+                                                    i
+                                                    <span role="tooltip">Attached as a Bluesky image when no stream preview card is posted.</span>
+                                                </button>
+                                            </div>
+                                            <input
+                                                aria-label="Bluesky Additional Image URL"
+                                                value={destinationForm.blueskyAdditionalImageURL}
+                                                onChange={(event) => {
+                                                    updateDestination('blueskyAdditionalImageURL', event.target.value);
+                                                    if (event.target.value.trim() !== '') {
+                                                        clearBlueskyAdditionalImage();
+                                                    }
+                                                }}
+                                                placeholder="https://static-cdn.jtvnw.net/..."
+                                            />
+                                        </label>
+                                        <label className="field">
+                                            <div className="field-label-row">
+                                                <span>Additional Image Upload</span>
+                                                <button
+                                                    type="button"
+                                                    className="info-tooltip"
+                                                    aria-label="Bluesky additional image upload information"
+                                                >
+                                                    i
+                                                    <span role="tooltip">Attached as a Bluesky image when no stream preview card is posted.</span>
+                                                </button>
+                                            </div>
+                                            <input
+                                                ref={blueskyAdditionalImageInputRef}
+                                                aria-label="Bluesky Additional Image Upload"
+                                                type="file"
+                                                accept="image/*"
+                                                onChange={(event) => void onBlueskyAdditionalImageUpload(event.target.files?.[0])}
+                                            />
+                                            <small>Large images are resized before posting.</small>
+                                        </label>
+                                        {destinationForm.blueskyAdditionalImageDataURL ? (
+                                            <div className="form-actions">
+                                                <span>Uploaded additional image selected</span>
+                                                <button
+                                                    type="button"
+                                                    className="ghost-button"
+                                                    onClick={clearBlueskyAdditionalImage}
                                                 >
                                                     Clear Image
                                                 </button>
@@ -1407,7 +1729,7 @@ function App() {
                                                 aria-label="Account Identifier"
                                                 value={destinationForm.mastodonAccountIdentifier}
                                                 onChange={(event) => updateDestination('mastodonAccountIdentifier', event.target.value)}
-                                                placeholder="@don@example.social"
+                                                placeholder="@streamer@example.social"
                                             />
                                         </label>
                                         <label className="field">
@@ -1428,6 +1750,43 @@ function App() {
                                                 placeholder="Paste Mastodon access token"
                                             />
                                         </label>
+                                        <label className="field">
+                                            <span>Additional Image URL</span>
+                                            <input
+                                                aria-label="Mastodon Additional Image URL"
+                                                value={destinationForm.mastodonAdditionalImageURL}
+                                                onChange={(event) => {
+                                                    updateDestination('mastodonAdditionalImageURL', event.target.value);
+                                                    if (event.target.value.trim() !== '') {
+                                                        clearMastodonAdditionalImage();
+                                                    }
+                                                }}
+                                                placeholder="https://static-cdn.jtvnw.net/..."
+                                            />
+                                        </label>
+                                        <label className="field">
+                                            <span>Additional Image Upload</span>
+                                            <input
+                                                ref={mastodonAdditionalImageInputRef}
+                                                aria-label="Mastodon Additional Image Upload"
+                                                type="file"
+                                                accept="image/*"
+                                                onChange={(event) => void onMastodonAdditionalImageUpload(event.target.files?.[0])}
+                                            />
+                                            <small>Large images are resized before posting.</small>
+                                        </label>
+                                        {destinationForm.mastodonAdditionalImageDataURL ? (
+                                            <div className="form-actions">
+                                                <span>Uploaded additional image selected</span>
+                                                <button
+                                                    type="button"
+                                                    className="ghost-button"
+                                                    onClick={clearMastodonAdditionalImage}
+                                                >
+                                                    Clear Image
+                                                </button>
+                                            </div>
+                                        ) : null}
                                     </>
                                 ) : null}
 
@@ -1533,16 +1892,6 @@ function App() {
                                 <span>Duplicate Protection Enabled</span>
                             </label>
 
-                            <label className="field checkbox-field">
-                                <input
-                                    aria-label="End Stream Post Enabled"
-                                    type="checkbox"
-                                    checked={settings.endStreamPostEnabled}
-                                    onChange={(event) => updateSettings('endStreamPostEnabled', event.target.checked)}
-                                />
-                                <span>End Stream Post Enabled</span>
-                            </label>
-
                             <label className="field">
                                 <span>Default Stream URL</span>
                                 <input
@@ -1571,17 +1920,6 @@ function App() {
                                     min={1}
                                     value={settings.duplicateWindowMinutes}
                                     onChange={(event) => updateSettings('duplicateWindowMinutes', Number(event.target.value))}
-                                />
-                            </label>
-
-                            <label className="field panel-wide">
-                                <span>End Stream Template</span>
-                                <textarea
-                                    aria-label="End Stream Template"
-                                    value={settings.endStreamTemplate}
-                                    onChange={(event) => updateSettings('endStreamTemplate', event.target.value)}
-                                    placeholder="Thanks for hanging out!"
-                                    rows={4}
                                 />
                             </label>
 
@@ -1633,7 +1971,7 @@ function App() {
                             </>
                         ) : null}
 
-                        {selectedTab === 'logs' ? (
+                        {SHOW_DEBUG_WORKFLOW_UI && selectedTab === 'logs' ? (
                             <article className="panel panel-wide">
                                 <div className="panel-header">
                                     <div>

@@ -214,7 +214,7 @@ func TestAppEndStreamDelegatesToExecutionServiceAndLogs(t *testing.T) {
 		Name:       "Main Bluesky",
 		Enabled:    true,
 		Template:   "{{stream_title}}",
-		ConfigJSON: `{"accountIdentifier":"don.main","credentialKey":"bluesky/main"}`,
+		ConfigJSON: `{"accountIdentifier":"streamer.main","credentialKey":"bluesky/main"}`,
 		CreatedAt:  time.Now().UTC(),
 		UpdatedAt:  time.Now().UTC(),
 	})
@@ -225,7 +225,7 @@ func TestAppEndStreamDelegatesToExecutionServiceAndLogs(t *testing.T) {
 		t.Fatal("expected saved destination id")
 	}
 
-	summary, err := app.EndStream()
+	summary, err := app.EndStream(domain.Announcement{})
 	if err != nil {
 		t.Fatalf("end stream: %v", err)
 	}
@@ -295,7 +295,7 @@ func TestAppRecoveryBindingsSurfaceSeededSession(t *testing.T) {
 		Name:       "Main Bluesky",
 		Enabled:    true,
 		Template:   "{{stream_title}}",
-		ConfigJSON: `{"accountIdentifier":"don.main","credentialKey":"bluesky/main"}`,
+		ConfigJSON: `{"accountIdentifier":"streamer.main","credentialKey":"bluesky/main"}`,
 	})
 	if err != nil {
 		t.Fatalf("seed destination: %v", err)
@@ -306,7 +306,7 @@ func TestAppRecoveryBindingsSurfaceSeededSession(t *testing.T) {
 		DestinationID:     "bluesky-main",
 		DestinationName:   "Main Bluesky",
 		Platform:          string(domain.PlatformBluesky),
-		AccountIdentifier: "don.main",
+		AccountIdentifier: "streamer.main",
 		CredentialKey:     "bluesky/main",
 		StreamURL:         "https://example.com/live",
 		StreamTitle:       "Going Live",

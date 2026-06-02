@@ -12,17 +12,19 @@ import (
 
 type discordPublisherStub struct {
 	calls []struct {
-		key     string
-		content string
+		key      string
+		content  string
+		metadata domain.DiscordPostMetadata
 	}
 	err error
 }
 
-func (s *discordPublisherStub) Publish(_ context.Context, webhookKey string, content string) error {
+func (s *discordPublisherStub) Publish(_ context.Context, webhookKey string, content string, metadata domain.DiscordPostMetadata) error {
 	s.calls = append(s.calls, struct {
-		key     string
-		content string
-	}{webhookKey, content})
+		key      string
+		content  string
+		metadata domain.DiscordPostMetadata
+	}{webhookKey, content, metadata})
 	return s.err
 }
 
@@ -79,16 +81,18 @@ type mastodonPublisherStub struct {
 		key         string
 		instanceURL string
 		content     string
+		metadata    domain.MastodonPostMetadata
 	}
 	err error
 }
 
-func (s *mastodonPublisherStub) PublishPost(_ context.Context, credentialKey string, instanceURL string, content string) error {
+func (s *mastodonPublisherStub) PublishPost(_ context.Context, credentialKey string, instanceURL string, content string, metadata domain.MastodonPostMetadata) error {
 	s.calls = append(s.calls, struct {
 		key         string
 		instanceURL string
 		content     string
-	}{credentialKey, instanceURL, content})
+		metadata    domain.MastodonPostMetadata
+	}{credentialKey, instanceURL, content, metadata})
 	return s.err
 }
 
@@ -140,7 +144,7 @@ func (s *liveNowSessionRepositoryExecutionStub) Delete(_ context.Context, destin
 
 type unavailableDiscordPublisherStub struct{}
 
-func (unavailableDiscordPublisherStub) Publish(context.Context, string, string) error {
+func (unavailableDiscordPublisherStub) Publish(context.Context, string, string, domain.DiscordPostMetadata) error {
 	return &domain.IntegrationUnavailableError{
 		Platform: domain.PlatformDiscord,
 		Message:  "Discord integration is not connected yet",
@@ -156,7 +160,7 @@ func TestExecutionServiceGoLiveIsolatesDestinationFailures(t *testing.T) {
 			Name:       "Main Discord",
 			Enabled:    true,
 			Template:   "{{stream_title}}",
-			ConfigJSON: `{"webhookKey":"https://discord.com/api/webhooks/123/main"}`,
+			ConfigJSON: `{"webhookKey":"https://discord.com/api/webhooks/123/main","cardThumbnailURL":"https://example.com/card.png","endStreamEnabled":true,"endStreamTemplate":"Bye"}`,
 		},
 		{
 			ID:         "bluesky-main",
@@ -164,7 +168,7 @@ func TestExecutionServiceGoLiveIsolatesDestinationFailures(t *testing.T) {
 			Name:       "Main Bluesky",
 			Enabled:    true,
 			Template:   "{{stream_title}}",
-			ConfigJSON: `{"accountIdentifier":"don.main","credentialKey":"bluesky/main"}`,
+			ConfigJSON: `{"accountIdentifier":"streamer.main","credentialKey":"bluesky/main"}`,
 		},
 	}
 	settingsRepo := &settingsRepositoryStub{item: domain.DefaultAppSettings()}
@@ -399,7 +403,7 @@ func TestExecutionServiceGoLiveUsesSelectedDestinationTargets(t *testing.T) {
 			Name:       "Main Discord",
 			Enabled:    true,
 			Template:   "{{stream_title}}",
-			ConfigJSON: `{"webhookKey":"https://discord.com/api/webhooks/123/main"}`,
+			ConfigJSON: `{"webhookKey":"https://discord.com/api/webhooks/123/main","cardThumbnailURL":"https://example.com/card.png","endStreamEnabled":true,"endStreamTemplate":"Bye"}`,
 		},
 		{
 			ID:         "bluesky-main",
@@ -407,7 +411,7 @@ func TestExecutionServiceGoLiveUsesSelectedDestinationTargets(t *testing.T) {
 			Name:       "Main Bluesky",
 			Enabled:    true,
 			Template:   "{{stream_title}}",
-			ConfigJSON: `{"accountIdentifier":"don.main","credentialKey":"bluesky/main","cardThumbnailURL":"https://example.com/avatar.png","liveNowDurationMinutes":90}`,
+			ConfigJSON: `{"accountIdentifier":"streamer.main","credentialKey":"bluesky/main","cardThumbnailURL":"https://example.com/avatar.png","liveNowDurationMinutes":90}`,
 		},
 		{
 			ID:         "mastodon-main",
@@ -437,19 +441,22 @@ func TestExecutionServiceGoLiveUsesSelectedDestinationTargets(t *testing.T) {
 	if len(discord.calls) != 1 || discord.calls[0].key != "https://discord.com/api/webhooks/123/main" {
 		t.Fatalf("expected selected discord key, got %+v", discord.calls)
 	}
-	if len(bluesky.calls) != 1 || bluesky.calls[0].identifier != "don.main" || bluesky.calls[0].key != "bluesky/main" {
+	if discord.calls[0].metadata.ThumbnailURL != "https://example.com/card.png" {
+		t.Fatalf("expected discord post metadata, got %+v", discord.calls[0].metadata)
+	}
+	if len(bluesky.calls) != 1 || bluesky.calls[0].identifier != "streamer.main" || bluesky.calls[0].key != "bluesky/main" {
 		t.Fatalf("expected selected bluesky key, got %+v", bluesky.calls)
 	}
 	if bluesky.calls[0].metadata.StreamURL != "https://example.com/live" || bluesky.calls[0].metadata.StreamTitle != "Going Live" || bluesky.calls[0].metadata.ThumbnailURL != "https://example.com/avatar.png" {
 		t.Fatalf("expected bluesky post metadata, got %+v", bluesky.calls[0].metadata)
 	}
-	if len(bluesky.liveNowSetCalls) != 1 || bluesky.liveNowSetCalls[0].identifier != "don.main" || bluesky.liveNowSetCalls[0].key != "bluesky/main" {
+	if len(bluesky.liveNowSetCalls) != 1 || bluesky.liveNowSetCalls[0].identifier != "streamer.main" || bluesky.liveNowSetCalls[0].key != "bluesky/main" {
 		t.Fatalf("expected bluesky live now to use selected key, got %+v", bluesky.liveNowSetCalls)
 	}
 	if bluesky.liveNowSetCalls[0].status.DurationMinutes != 90 {
 		t.Fatalf("expected configured live now duration, got %+v", bluesky.liveNowSetCalls[0].status)
 	}
-	if len(sessions.upserts) != 1 || sessions.upserts[0].AccountIdentifier != "don.main" || sessions.upserts[0].CredentialKey != "bluesky/main" {
+	if len(sessions.upserts) != 1 || sessions.upserts[0].AccountIdentifier != "streamer.main" || sessions.upserts[0].CredentialKey != "bluesky/main" {
 		t.Fatalf("expected tracked session to use selected destination, got %+v", sessions.upserts)
 	}
 	if len(mastodon.calls) != 1 || mastodon.calls[0].key != "mastodon/main" || mastodon.calls[0].instanceURL != "https://mastodon.social" {
@@ -488,7 +495,7 @@ func TestExecutionServiceGoLiveReturnsFailureWhenBlueskyLiveNowUpdateFailsAfterP
 		Name:       "Main Bluesky",
 		Enabled:    true,
 		Template:   "{{stream_title}}",
-		ConfigJSON: `{"accountIdentifier":"don.main","credentialKey":"bluesky/main"}`,
+		ConfigJSON: `{"accountIdentifier":"streamer.main","credentialKey":"bluesky/main"}`,
 	}
 	settingsRepo := &settingsRepositoryStub{item: domain.DefaultAppSettings()}
 	history := &postHistoryRepositoryStub{recordsByDestination: map[string][]ports.PostHistoryRecord{}}
@@ -528,7 +535,7 @@ func TestExecutionServiceEndStreamClearsBlueskyLiveNow(t *testing.T) {
 			Name:       "Main Bluesky",
 			Enabled:    true,
 			Template:   "{{stream_title}}",
-			ConfigJSON: `{"accountIdentifier":"don.main","credentialKey":"bluesky/main"}`,
+			ConfigJSON: `{"accountIdentifier":"streamer.main","credentialKey":"bluesky/main"}`,
 		},
 		{
 			ID:         "discord-main",
@@ -536,7 +543,7 @@ func TestExecutionServiceEndStreamClearsBlueskyLiveNow(t *testing.T) {
 			Name:       "Main Discord",
 			Enabled:    true,
 			Template:   "{{stream_title}}",
-			ConfigJSON: `{"webhookKey":"https://discord.com/api/webhooks/123/main"}`,
+			ConfigJSON: `{"webhookKey":"https://discord.com/api/webhooks/123/main","endStreamEnabled":false,"endStreamTemplate":"Discord should not post"}`,
 		},
 	}
 	settingsRepo := &settingsRepositoryStub{item: domain.DefaultAppSettings()}
@@ -546,7 +553,7 @@ func TestExecutionServiceEndStreamClearsBlueskyLiveNow(t *testing.T) {
 			DestinationID:     "bluesky-main",
 			DestinationName:   "Main Bluesky",
 			Platform:          string(domain.PlatformBluesky),
-			AccountIdentifier: "don.main",
+			AccountIdentifier: "streamer.main",
 			CredentialKey:     "bluesky/main",
 			StreamURL:         "https://example.com/live",
 			StreamTitle:       "Going Live",
@@ -555,15 +562,15 @@ func TestExecutionServiceEndStreamClearsBlueskyLiveNow(t *testing.T) {
 	}
 	service := NewExecutionService(destRepo, settingsRepo, &postHistoryRepositoryStub{recordsByDestination: map[string][]ports.PostHistoryRecord{}}, sessions, &discordPublisherStub{}, bluesky, &mastodonPublisherStub{})
 
-	summary, err := service.EndStream(context.Background())
+	summary, err := service.EndStream(context.Background(), domain.Announcement{})
 	if err != nil {
 		t.Fatalf("end stream: %v", err)
 	}
-	if len(bluesky.liveNowClearCalls) != 1 || bluesky.liveNowClearCalls[0].identifier != "don.main" || bluesky.liveNowClearCalls[0].key != "bluesky/main" {
+	if len(bluesky.liveNowClearCalls) != 1 || bluesky.liveNowClearCalls[0].identifier != "streamer.main" || bluesky.liveNowClearCalls[0].key != "bluesky/main" {
 		t.Fatalf("expected live now clear call, got %+v", bluesky.liveNowClearCalls)
 	}
-	if len(summary.Results) != 1 || summary.Results[0].State != domain.ExecutionStateSuccess {
-		t.Fatalf("expected one success result, got %+v", summary.Results)
+	if len(summary.Results) != 3 || summary.Results[0].State != domain.ExecutionStateSuccess || summary.SkippedCount != 2 {
+		t.Fatalf("expected live now clear plus disabled post skips, got %+v", summary)
 	}
 	if len(sessions.deletes) != 1 || sessions.deletes[0] != "bluesky-main" {
 		t.Fatalf("expected live now session delete, got %+v", sessions.deletes)
@@ -579,7 +586,7 @@ func TestExecutionServiceEndStreamOptionallyPublishesConfiguredPosts(t *testing.
 			Name:       "Main Bluesky",
 			Enabled:    true,
 			Template:   "{{stream_title}}",
-			ConfigJSON: `{"accountIdentifier":"don.main","credentialKey":"bluesky/main"}`,
+			ConfigJSON: `{"accountIdentifier":"streamer.main","credentialKey":"bluesky/main","endStreamEnabled":true,"endStreamTemplate":"Thanks for hanging out at {{stream_title}} {{stream_url}}"}`,
 		},
 		{
 			ID:         "discord-main",
@@ -587,12 +594,10 @@ func TestExecutionServiceEndStreamOptionallyPublishesConfiguredPosts(t *testing.
 			Name:       "Main Discord",
 			Enabled:    true,
 			Template:   "{{stream_title}}",
-			ConfigJSON: `{"webhookKey":"https://discord.com/api/webhooks/123/main"}`,
+			ConfigJSON: `{"webhookKey":"https://discord.com/api/webhooks/123/main","endStreamEnabled":false,"endStreamTemplate":"Discord should not post"}`,
 		},
 	}
 	settings := domain.DefaultAppSettings()
-	settings.EndStreamPostEnabled = true
-	settings.EndStreamTemplate = "Thanks for hanging out at {{stream_title}} {{stream_url}}"
 	settingsRepo := &settingsRepositoryStub{item: settings}
 	discord := &discordPublisherStub{}
 	bluesky := &blueskyPublisherStub{}
@@ -601,7 +606,7 @@ func TestExecutionServiceEndStreamOptionallyPublishesConfiguredPosts(t *testing.
 			DestinationID:     "bluesky-main",
 			DestinationName:   "Main Bluesky",
 			Platform:          string(domain.PlatformBluesky),
-			AccountIdentifier: "don.main",
+			AccountIdentifier: "streamer.main",
 			CredentialKey:     "bluesky/main",
 			StreamURL:         "https://example.com/live",
 			StreamTitle:       "Going Live",
@@ -611,21 +616,90 @@ func TestExecutionServiceEndStreamOptionallyPublishesConfiguredPosts(t *testing.
 	service := NewExecutionService(destRepo, settingsRepo, &postHistoryRepositoryStub{recordsByDestination: map[string][]ports.PostHistoryRecord{}}, sessions, discord, bluesky, &mastodonPublisherStub{})
 	service.clock = fixedClock{now: time.Date(2026, 5, 31, 19, 0, 0, 0, time.UTC)}
 
-	summary, err := service.EndStream(context.Background())
+	summary, err := service.EndStream(context.Background(), domain.Announcement{})
 	if err != nil {
 		t.Fatalf("end stream: %v", err)
 	}
 	if len(bluesky.liveNowClearCalls) != 1 {
 		t.Fatalf("expected one live now clear call, got %+v", bluesky.liveNowClearCalls)
 	}
-	if len(discord.calls) != 1 || discord.calls[0].content != "Thanks for hanging out at  " {
-		t.Fatalf("expected discord end stream post, got %+v", discord.calls)
+	if len(discord.calls) != 0 {
+		t.Fatalf("expected disabled discord end stream post to be skipped, got %+v", discord.calls)
 	}
 	if len(bluesky.calls) != 1 || bluesky.calls[0].content != "Thanks for hanging out at Going Live https://example.com/live" {
 		t.Fatalf("expected bluesky end stream post with tracked session details, got %+v", bluesky.calls)
 	}
 	if len(summary.Results) != 3 {
 		t.Fatalf("expected three end stream results, got %+v", summary.Results)
+	}
+	if summary.SkippedCount != 1 {
+		t.Fatalf("expected one skipped disabled destination, got %+v", summary)
+	}
+}
+
+func TestExecutionServiceEndStreamUsesSelectedDestinationTargets(t *testing.T) {
+	destRepo := newDestinationRepositoryStub()
+	destRepo.listItems = []domain.Destination{
+		{
+			ID:         "bluesky-main",
+			Platform:   domain.PlatformBluesky,
+			Name:       "Main Bluesky",
+			Enabled:    true,
+			Template:   "{{stream_title}}",
+			ConfigJSON: `{"accountIdentifier":"streamer.main","credentialKey":"bluesky/main"}`,
+		},
+		{
+			ID:         "discord-main",
+			Platform:   domain.PlatformDiscord,
+			Name:       "Main Discord",
+			Enabled:    true,
+			Template:   "{{stream_title}}",
+			ConfigJSON: `{"webhookKey":"https://discord.com/api/webhooks/123/main","cardThumbnailURL":"https://example.com/card.png","endStreamEnabled":true,"endStreamTemplate":"Bye"}`,
+		},
+		{
+			ID:         "discord-other",
+			Platform:   domain.PlatformDiscord,
+			Name:       "Other Discord",
+			Enabled:    true,
+			Template:   "{{stream_title}}",
+			ConfigJSON: `{"webhookKey":"https://discord.com/api/webhooks/123/other"}`,
+		},
+	}
+	settings := domain.DefaultAppSettings()
+	settingsRepo := &settingsRepositoryStub{item: settings}
+	discord := &discordPublisherStub{}
+	bluesky := &blueskyPublisherStub{}
+	sessions := &liveNowSessionRepositoryExecutionStub{
+		items: []domain.ActiveLiveNowSession{{
+			DestinationID:     "bluesky-main",
+			DestinationName:   "Main Bluesky",
+			Platform:          string(domain.PlatformBluesky),
+			AccountIdentifier: "streamer.main",
+			CredentialKey:     "bluesky/main",
+			StreamURL:         "https://example.com/live",
+			StreamTitle:       "Going Live",
+			StartedAt:         time.Date(2026, 5, 31, 18, 0, 0, 0, time.UTC),
+		}},
+	}
+	service := NewExecutionService(destRepo, settingsRepo, &postHistoryRepositoryStub{recordsByDestination: map[string][]ports.PostHistoryRecord{}}, sessions, discord, bluesky, &mastodonPublisherStub{})
+
+	summary, err := service.EndStream(context.Background(), domain.Announcement{
+		DestinationIDs: []string{"discord-main"},
+	})
+	if err != nil {
+		t.Fatalf("end stream: %v", err)
+	}
+	if len(bluesky.liveNowClearCalls) != 0 || len(bluesky.calls) != 0 {
+		t.Fatalf("expected unselected bluesky to be untouched, clear=%+v posts=%+v", bluesky.liveNowClearCalls, bluesky.calls)
+	}
+	if len(discord.calls) != 1 || discord.calls[0].key != "https://discord.com/api/webhooks/123/main" {
+		t.Fatalf("expected selected discord only, got %+v", discord.calls)
+	}
+	if discord.calls[0].metadata.ThumbnailURL != "https://example.com/card.png" {
+		t.Fatalf("expected discord thumbnail metadata, got %+v", discord.calls[0].metadata)
+	}
+	if len(summary.Results) != 1 {
+		t.Fatalf("expected one selected end stream result, got %+v", summary.Results)
 	}
 }
 
@@ -638,7 +712,7 @@ func TestExecutionServiceEndStreamDoesNotClearWhenNoTrackedLiveNowSessionExists(
 			Name:       "Main Bluesky",
 			Enabled:    true,
 			Template:   "{{stream_title}}",
-			ConfigJSON: `{"accountIdentifier":"don.main","credentialKey":"bluesky/main"}`,
+			ConfigJSON: `{"accountIdentifier":"streamer.main","credentialKey":"bluesky/main"}`,
 		},
 	}
 	settingsRepo := &settingsRepositoryStub{item: domain.DefaultAppSettings()}
@@ -646,15 +720,15 @@ func TestExecutionServiceEndStreamDoesNotClearWhenNoTrackedLiveNowSessionExists(
 	sessions := &liveNowSessionRepositoryExecutionStub{}
 	service := NewExecutionService(destRepo, settingsRepo, &postHistoryRepositoryStub{recordsByDestination: map[string][]ports.PostHistoryRecord{}}, sessions, &discordPublisherStub{}, bluesky, &mastodonPublisherStub{})
 
-	summary, err := service.EndStream(context.Background())
+	summary, err := service.EndStream(context.Background(), domain.Announcement{})
 	if err != nil {
 		t.Fatalf("end stream: %v", err)
 	}
 	if len(bluesky.liveNowClearCalls) != 0 {
 		t.Fatalf("expected no live now clear call, got %+v", bluesky.liveNowClearCalls)
 	}
-	if len(summary.Results) != 0 {
-		t.Fatalf("expected no end stream clear results without a tracked session, got %+v", summary.Results)
+	if len(summary.Results) != 1 || summary.Results[0].State != domain.ExecutionStateSkipped {
+		t.Fatalf("expected disabled end stream message skip without a tracked session, got %+v", summary.Results)
 	}
 }
 

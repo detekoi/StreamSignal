@@ -52,7 +52,6 @@ func (s *DiagnosticsService) Build(ctx context.Context) (string, error) {
 	fmt.Fprintf(&builder, "Generated At: %s\n", s.clock.Now().Format(time.RFC3339Nano))
 	fmt.Fprintf(&builder, "Duplicate Protection Enabled: %t\n", settings.DuplicateProtectionEnabled)
 	fmt.Fprintf(&builder, "Duplicate Window Minutes: %d\n", settings.DuplicateWindowMinutes)
-	fmt.Fprintf(&builder, "End Stream Post Enabled: %t\n", settings.EndStreamPostEnabled)
 	fmt.Fprintf(&builder, "Destinations Configured: %d\n", len(destinations))
 	fmt.Fprintf(&builder, "Pending Live Now Sessions: %d\n", len(sessions))
 	fmt.Fprintf(&builder, "Sensitive values: redacted\n")

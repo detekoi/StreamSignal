@@ -24,9 +24,6 @@ func (s *SettingsService) Save(ctx context.Context, settings domain.AppSettings)
 	if settings.DuplicateWindowMinutes <= 0 {
 		return domain.AppSettings{}, fmt.Errorf("duplicate window minutes must be greater than zero")
 	}
-	if settings.EndStreamPostEnabled && settings.EndStreamTemplate == "" {
-		return domain.AppSettings{}, fmt.Errorf("end stream template is required when end stream posting is enabled")
-	}
 	if err := s.repository.Save(ctx, settings); err != nil {
 		return domain.AppSettings{}, err
 	}

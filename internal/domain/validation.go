@@ -29,19 +29,47 @@ func NormalizeAnnouncement(input Announcement, settings AppSettings) Announcemen
 }
 
 func ValidateAnnouncement(input Announcement) []string {
+	return ValidateAnnouncementForTemplate(input, "{{stream_title}}{{stream_url}}")
+}
+
+func ValidateAnnouncementForTemplate(input Announcement, template string) []string {
 	var notes []string
 
-	if strings.TrimSpace(input.StreamTitle) == "" {
+	if templateUses(template, "{{stream_title}}") && strings.TrimSpace(input.StreamTitle) == "" {
 		notes = append(notes, "Stream title is required.")
 	}
 
-	if strings.TrimSpace(input.StreamURL) == "" {
+	if templateUses(template, "{{stream_url}}") && strings.TrimSpace(input.StreamURL) == "" {
 		notes = append(notes, "Stream URL is required.")
-	} else if _, err := url.ParseRequestURI(strings.TrimSpace(input.StreamURL)); err != nil {
+	} else if templateUses(template, "{{stream_url}}") && !isAbsoluteHTTPURL(strings.TrimSpace(input.StreamURL)) {
 		notes = append(notes, "Stream URL must be a valid absolute URL.")
 	}
 
+	if templateUses(template, "{{category}}") && strings.TrimSpace(input.Category) == "" {
+		notes = append(notes, "Category is required.")
+	}
+
+	if templateUses(template, "{{message}}") && strings.TrimSpace(input.Message) == "" {
+		notes = append(notes, "Message is required.")
+	}
+
+	if templateUses(template, "{{hashtags}}") && strings.TrimSpace(input.Hashtags) == "" {
+		notes = append(notes, "Hashtags are required.")
+	}
+
 	return notes
+}
+
+func templateUses(template string, token string) bool {
+	return strings.Contains(template, token)
+}
+
+func isAbsoluteHTTPURL(value string) bool {
+	parsed, err := url.ParseRequestURI(value)
+	if err != nil {
+		return false
+	}
+	return parsed.Scheme == "http" || parsed.Scheme == "https"
 }
 
 func ValidatePreviewContent(platform DestinationPlatform, content string) []string {

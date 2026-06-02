@@ -115,7 +115,7 @@ func TestSecureDestinationRepositoryDeleteRemovesDestinationAndStoredSecrets(t *
 		Name:       "Main Bluesky",
 		Enabled:    true,
 		Template:   "{{stream_title}}",
-		ConfigJSON: `{"accountIdentifier":"don.main","credentialKey":"bluesky-app-password"}`,
+		ConfigJSON: `{"accountIdentifier":"streamer.main","credentialKey":"bluesky-app-password"}`,
 		CreatedAt:  now,
 		UpdatedAt:  now,
 	}
@@ -141,100 +141,6 @@ func TestSecureDestinationRepositoryDeleteRemovesDestinationAndStoredSecrets(t *
 	}
 }
 
-func TestSecureSettingsRepositoryStoresOnlySecretReferencesInSQLite(t *testing.T) {
-	db := openTestDB(t)
-	repository := NewSettingsRepository(sqlitestore.NewSettingsRepository(db), memory.NewStore())
-
-	expected := domain.AppSettings{
-		TestModeEnabled:              true,
-		TestDiscordWebhookKey:        "https://discord.example/test-webhook",
-		TestBlueskyAccountIdentifier: "don.test",
-		TestBlueskyCredentialKey:     "bluesky-app-password",
-		TestMastodonCredentialKey:    "mastodon-access-token",
-		TestMastodonInstanceURL:      "https://mastodon.test",
-		DefaultStreamURL:             "https://example.com/live",
-		DefaultHashtags:              "#streamsignal",
-		DuplicateProtectionEnabled:   true,
-		DuplicateWindowMinutes:       15,
-		EndStreamPostEnabled:         true,
-		EndStreamTemplate:            "Thanks for watching!",
-	}
-
-	if err := repository.Save(context.Background(), expected); err != nil {
-		t.Fatalf("save settings: %v", err)
-	}
-
-	var rawDiscord, rawBluesky, rawMastodon string
-	if err := db.QueryRow(`
-select test_discord_webhook_key, test_bluesky_credential_key, test_mastodon_credential_key
-from settings where id = 1`).Scan(&rawDiscord, &rawBluesky, &rawMastodon); err != nil {
-		t.Fatalf("query raw settings secrets: %v", err)
-	}
-	for _, raw := range []string{rawDiscord, rawBluesky, rawMastodon} {
-		if strings.Contains(raw, "discord.example") || strings.Contains(raw, "app-password") || strings.Contains(raw, "access-token") {
-			t.Fatalf("expected secret reference instead of raw secret, got %q", raw)
-		}
-		if !strings.HasPrefix(raw, "secret://streamsignal/settings/") {
-			t.Fatalf("expected settings secret reference, got %q", raw)
-		}
-	}
-
-	actual, err := repository.Load(context.Background())
-	if err != nil {
-		t.Fatalf("load settings: %v", err)
-	}
-	if actual.TestDiscordWebhookKey != expected.TestDiscordWebhookKey ||
-		actual.TestBlueskyCredentialKey != expected.TestBlueskyCredentialKey ||
-		actual.TestMastodonCredentialKey != expected.TestMastodonCredentialKey {
-		t.Fatalf("expected hydrated secret settings %+v, got %+v", expected, actual)
-	}
-}
-
-func TestSecureSettingsRepositoryMigratesLegacySQLiteSecretsOnLoad(t *testing.T) {
-	db := openTestDB(t)
-	rawRepository := sqlitestore.NewSettingsRepository(db)
-	repository := NewSettingsRepository(rawRepository, memory.NewStore())
-
-	legacy := domain.AppSettings{
-		TestModeEnabled:              true,
-		TestDiscordWebhookKey:        "https://discord.example/legacy-webhook",
-		TestBlueskyAccountIdentifier: "don.test",
-		TestBlueskyCredentialKey:     "legacy-bluesky-password",
-		TestMastodonCredentialKey:    "legacy-mastodon-token",
-		TestMastodonInstanceURL:      "https://mastodon.test",
-		DefaultStreamURL:             "https://example.com/live",
-		DefaultHashtags:              "#streamsignal",
-		DuplicateProtectionEnabled:   true,
-		DuplicateWindowMinutes:       15,
-		EndStreamPostEnabled:         false,
-		EndStreamTemplate:            "",
-	}
-
-	if err := rawRepository.Save(context.Background(), legacy); err != nil {
-		t.Fatalf("seed raw legacy settings: %v", err)
-	}
-
-	loaded, err := repository.Load(context.Background())
-	if err != nil {
-		t.Fatalf("load migrated settings: %v", err)
-	}
-	if loaded.TestDiscordWebhookKey != legacy.TestDiscordWebhookKey ||
-		loaded.TestBlueskyCredentialKey != legacy.TestBlueskyCredentialKey ||
-		loaded.TestMastodonCredentialKey != legacy.TestMastodonCredentialKey {
-		t.Fatalf("expected hydrated legacy settings, got %+v", loaded)
-	}
-
-	var rawDiscord, rawBluesky, rawMastodon string
-	if err := db.QueryRow(`
-select test_discord_webhook_key, test_bluesky_credential_key, test_mastodon_credential_key
-from settings where id = 1`).Scan(&rawDiscord, &rawBluesky, &rawMastodon); err != nil {
-		t.Fatalf("query migrated raw settings: %v", err)
-	}
-	if strings.Contains(rawDiscord, "legacy-webhook") || strings.Contains(rawBluesky, "legacy-bluesky-password") || strings.Contains(rawMastodon, "legacy-mastodon-token") {
-		t.Fatalf("expected legacy settings secrets to be migrated out of SQLite")
-	}
-}
-
 func TestSecureLiveNowSessionRepositoryStoresOnlySecretReferencesInSQLite(t *testing.T) {
 	db := openTestDB(t)
 	repository := NewLiveNowSessionRepository(sqlitestore.NewLiveNowSessionRepository(db), memory.NewStore())
@@ -243,7 +149,7 @@ func TestSecureLiveNowSessionRepositoryStoresOnlySecretReferencesInSQLite(t *tes
 		DestinationID:     "bluesky-main",
 		DestinationName:   "Main Bluesky",
 		Platform:          string(domain.PlatformBluesky),
-		AccountIdentifier: "don.main",
+		AccountIdentifier: "streamer.main",
 		CredentialKey:     "bluesky-app-password",
 		StreamURL:         "https://example.com/live",
 		StreamTitle:       "Going Live",

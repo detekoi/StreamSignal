@@ -129,6 +129,7 @@ function toPreviewItem(item: domain.PreviewItem): PreviewItem {
         destinationID: item.destinationID,
         destinationName: item.destinationName,
         platform: item.platform,
+        previewLabel: item.previewLabel,
         content: item.content,
         characterCount: item.characterCount,
         validationState: item.validationState,
@@ -160,8 +161,14 @@ export function forceGoLive(announcement: AnnouncementInput, destinationIDs: str
     return ForceGoLive(toAnnouncementModel(announcement, destinationIDs)).then(toExecutionSummary);
 }
 
-export function endStream(): Promise<ExecutionSummary> {
-    return EndStream().then(toExecutionSummary);
+export function endStream(destinationIDs: string[] = []): Promise<ExecutionSummary> {
+    return EndStream(toAnnouncementModel({
+        streamTitle: '',
+        streamURL: '',
+        category: '',
+        message: '',
+        hashtags: '',
+    }, destinationIDs)).then(toExecutionSummary);
 }
 
 export function listPendingLiveNowSessions(): Promise<ActiveLiveNowSession[]> {
@@ -190,34 +197,18 @@ export function deleteDestination(id: string): Promise<void> {
 
 export function getSettings(): Promise<AppSettings> {
     return GetSettings().then((settings: domain.AppSettings) => ({
-        testModeEnabled: settings.testModeEnabled,
-        testDiscordWebhookKey: settings.testDiscordWebhookKey,
-        testBlueskyAccountIdentifier: settings.testBlueskyAccountIdentifier,
-        testBlueskyCredentialKey: settings.testBlueskyCredentialKey,
-        testMastodonCredentialKey: settings.testMastodonCredentialKey,
-        testMastodonInstanceURL: settings.testMastodonInstanceURL,
         defaultStreamURL: settings.defaultStreamURL,
         defaultHashtags: settings.defaultHashtags,
         duplicateProtectionEnabled: settings.duplicateProtectionEnabled,
         duplicateWindowMinutes: settings.duplicateWindowMinutes,
-        endStreamPostEnabled: settings.endStreamPostEnabled,
-        endStreamTemplate: settings.endStreamTemplate,
     }));
 }
 
 export function saveSettings(settings: AppSettings): Promise<AppSettings> {
     return SaveSettings(toSettingsModel(settings)).then((saved: domain.AppSettings) => ({
-        testModeEnabled: saved.testModeEnabled,
-        testDiscordWebhookKey: saved.testDiscordWebhookKey,
-        testBlueskyAccountIdentifier: saved.testBlueskyAccountIdentifier,
-        testBlueskyCredentialKey: saved.testBlueskyCredentialKey,
-        testMastodonCredentialKey: saved.testMastodonCredentialKey,
-        testMastodonInstanceURL: saved.testMastodonInstanceURL,
         defaultStreamURL: saved.defaultStreamURL,
         defaultHashtags: saved.defaultHashtags,
         duplicateProtectionEnabled: saved.duplicateProtectionEnabled,
         duplicateWindowMinutes: saved.duplicateWindowMinutes,
-        endStreamPostEnabled: saved.endStreamPostEnabled,
-        endStreamTemplate: saved.endStreamTemplate,
     }));
 }

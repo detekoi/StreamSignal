@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -54,22 +55,24 @@ func TestPublisherCreatesSessionThenPublishesPost(t *testing.T) {
 	}))
 	defer server.Close()
 
-	publisher := NewPublisher(server.URL, server.Client())
+	client := server.Client()
+	client.Transport = rewriteHostTransport(t, client.Transport, server.URL, "example.com")
+	publisher := NewPublisher(server.URL, client)
 	publisher.now = func() time.Time {
 		return time.Date(2026, 5, 31, 19, 0, 0, 0, time.UTC)
 	}
 
 	content := "Going Live\nhttps://example.com/live"
-	if err := publisher.PublishPost(context.Background(), "don.test", "app-password", content, domain.BlueskyPostMetadata{
+	if err := publisher.PublishPost(context.Background(), "streamer.test", "app-password", content, domain.BlueskyPostMetadata{
 		StreamURL:    "https://example.com/live",
 		StreamTitle:  "Going Live",
 		Description:  "Come hang out",
-		ThumbnailURL: server.URL + "/thumbnail.png",
+		ThumbnailURL: "https://example.com/thumbnail.png",
 	}); err != nil {
 		t.Fatalf("publish post: %v", err)
 	}
 
-	if createSessionPayload["identifier"] != "don.test" || createSessionPayload["password"] != "app-password" {
+	if createSessionPayload["identifier"] != "streamer.test" || createSessionPayload["password"] != "app-password" {
 		t.Fatalf("unexpected createSession payload: %+v", createSessionPayload)
 	}
 	if authHeader != "Bearer jwt-token" {
@@ -114,6 +117,41 @@ func TestPublisherCreatesSessionThenPublishesPost(t *testing.T) {
 	}
 }
 
+func rewriteHostTransport(t *testing.T, base http.RoundTripper, targetBaseURL string, host string) http.RoundTripper {
+	t.Helper()
+	target, err := url.Parse(targetBaseURL)
+	if err != nil {
+		t.Fatalf("parse target URL: %v", err)
+	}
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	return roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		if request.URL.Hostname() == host {
+			next := request.Clone(request.Context())
+			next.URL = cloneURL(request.URL)
+			next.URL.Scheme = target.Scheme
+			next.URL.Host = target.Host
+			return base.RoundTrip(next)
+		}
+		return base.RoundTrip(request)
+	})
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return fn(request)
+}
+
+func cloneURL(value *url.URL) *url.URL {
+	if value == nil {
+		return nil
+	}
+	next := *value
+	return &next
+}
+
 func TestPublisherUploadsDataURLThumbnailForPostCard(t *testing.T) {
 	var createRecordPayload map[string]any
 	var uploadedThumb string
@@ -147,7 +185,7 @@ func TestPublisherUploadsDataURLThumbnailForPostCard(t *testing.T) {
 
 	publisher := NewPublisher(server.URL, server.Client())
 	content := "Going Live\nhttps://example.com/live"
-	err := publisher.PublishPost(context.Background(), "don.test", "app-password", content, domain.BlueskyPostMetadata{
+	err := publisher.PublishPost(context.Background(), "streamer.test", "app-password", content, domain.BlueskyPostMetadata{
 		StreamURL:        "https://example.com/live",
 		StreamTitle:      "Going Live",
 		ThumbnailDataURL: "data:image/png;base64,ZmFrZS1wbmc=",
@@ -168,9 +206,67 @@ func TestPublisherUploadsDataURLThumbnailForPostCard(t *testing.T) {
 	}
 }
 
+func TestPublisherUploadsAdditionalImageWhenNoPostCardIsPresent(t *testing.T) {
+	var createRecordPayload map[string]any
+	var uploadedImage string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/xrpc/com.atproto.server.createSession":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"accessJwt":"jwt-token","did":"did:plc:test"}`))
+		case "/xrpc/com.atproto.repo.uploadBlob":
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				t.Fatalf("read uploaded image: %v", err)
+			}
+			uploadedImage = string(body)
+			if r.Header.Get("Authorization") != "Bearer jwt-token" {
+				t.Fatalf("expected bearer token, got %q", r.Header.Get("Authorization"))
+			}
+			if r.Header.Get("Content-Type") != "image/png" {
+				t.Fatalf("expected image/png upload, got %q", r.Header.Get("Content-Type"))
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"blob":{"$type":"blob","ref":{"$link":"image-cid"},"mimeType":"image/png","size":8}}`))
+		case "/xrpc/com.atproto.repo.createRecord":
+			if err := json.NewDecoder(r.Body).Decode(&createRecordPayload); err != nil {
+				t.Fatalf("decode createRecord payload: %v", err)
+			}
+			w.WriteHeader(http.StatusOK)
+		default:
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	publisher := NewPublisher(server.URL, server.Client())
+	err := publisher.PublishPost(context.Background(), "streamer.test", "app-password", "Going Live", domain.BlueskyPostMetadata{
+		AdditionalImageDataURL: "data:image/png;base64,ZmFrZS1wbmc=",
+	})
+	if err != nil {
+		t.Fatalf("publish post: %v", err)
+	}
+	if uploadedImage != "fake-png" {
+		t.Fatalf("expected decoded image upload, got %q", uploadedImage)
+	}
+	record := createRecordPayload["record"].(map[string]any)
+	embed := record["embed"].(map[string]any)
+	if embed["$type"] != "app.bsky.embed.images" {
+		t.Fatalf("expected image embed, got %+v", embed)
+	}
+	images := embed["images"].([]any)
+	image := images[0].(map[string]any)
+	blob := image["image"].(map[string]any)
+	ref := blob["ref"].(map[string]any)
+	if ref["$link"] != "image-cid" {
+		t.Fatalf("unexpected image blob ref: %+v", blob)
+	}
+}
+
 func TestPublisherRejectsOversizedDataURLThumbnailBeforeDecode(t *testing.T) {
 	encoded := strings.Repeat("A", base64EncodedLimit()+8)
-	_, _, err := decodeImageDataURL("data:image/png;base64," + encoded)
+	_, _, err := decodeCardThumbnailDataURL("data:image/png;base64," + encoded)
 	if err == nil || err.Error() != "Bluesky card thumbnail must be 1 MB or smaller" {
 		t.Fatalf("expected oversized thumbnail error, got %v", err)
 	}
@@ -189,7 +285,7 @@ func TestPublisherRejectsNonHTTPThumbnailURL(t *testing.T) {
 	defer server.Close()
 
 	publisher := NewPublisher(server.URL, server.Client())
-	err := publisher.PublishPost(context.Background(), "don.test", "app-password", "Going Live\nhttps://example.com/live", domain.BlueskyPostMetadata{
+	err := publisher.PublishPost(context.Background(), "streamer.test", "app-password", "Going Live\nhttps://example.com/live", domain.BlueskyPostMetadata{
 		StreamURL:    "https://example.com/live",
 		StreamTitle:  "Going Live",
 		ThumbnailURL: "file:///tmp/thumb.png",
@@ -229,9 +325,9 @@ func TestPublisherCreatesSessionThenSetsLiveNow(t *testing.T) {
 		return time.Date(2026, 5, 31, 19, 30, 0, 0, time.UTC)
 	}
 
-	err := publisher.SetLiveNow(context.Background(), "don.test", "app-password", domain.BlueskyLiveNowStatus{
-		URL:             "https://twitch.tv/don",
-		Title:           "Don is live",
+	err := publisher.SetLiveNow(context.Background(), "streamer.test", "app-password", domain.BlueskyLiveNowStatus{
+		URL:             "https://twitch.tv/example-streamer",
+		Title:           "Streamer is live",
 		Description:     "Come hang out",
 		DurationMinutes: 120,
 	})
@@ -265,7 +361,7 @@ func TestPublisherCreatesSessionThenSetsLiveNow(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected external card object, got %+v", embed["external"])
 	}
-	if external["uri"] != "https://twitch.tv/don" || external["title"] != "Don is live" || external["description"] != "Come hang out" {
+	if external["uri"] != "https://twitch.tv/example-streamer" || external["title"] != "Streamer is live" || external["description"] != "Come hang out" {
 		t.Fatalf("unexpected external card: %+v", external)
 	}
 }
@@ -291,7 +387,7 @@ func TestPublisherCreatesSessionThenClearsLiveNow(t *testing.T) {
 
 	publisher := NewPublisher(server.URL, server.Client())
 
-	if err := publisher.ClearLiveNow(context.Background(), "don.test", "app-password"); err != nil {
+	if err := publisher.ClearLiveNow(context.Background(), "streamer.test", "app-password"); err != nil {
 		t.Fatalf("clear live now: %v", err)
 	}
 	if payload["collection"] != "app.bsky.actor.status" || payload["repo"] != "did:plc:test" || payload["rkey"] != "self" {
@@ -307,7 +403,7 @@ func TestPublisherReturnsSessionError(t *testing.T) {
 
 	publisher := NewPublisher(server.URL, server.Client())
 
-	err := publisher.PublishPost(context.Background(), "don.test", "bad-password", "Going Live", domain.BlueskyPostMetadata{})
+	err := publisher.PublishPost(context.Background(), "streamer.test", "bad-password", "Going Live", domain.BlueskyPostMetadata{})
 	if err == nil {
 		t.Fatal("expected publish error")
 	}
@@ -329,7 +425,7 @@ func TestPublisherReturnsCreateRecordError(t *testing.T) {
 
 	publisher := NewPublisher(server.URL, server.Client())
 
-	err := publisher.PublishPost(context.Background(), "don.test", "app-password", "Going Live", domain.BlueskyPostMetadata{})
+	err := publisher.PublishPost(context.Background(), "streamer.test", "app-password", "Going Live", domain.BlueskyPostMetadata{})
 	if err == nil {
 		t.Fatal("expected publish error")
 	}
@@ -351,10 +447,10 @@ func TestPublisherVerifiesCredentials(t *testing.T) {
 
 	publisher := NewPublisher(server.URL, server.Client())
 
-	if err := publisher.VerifyCredentials(context.Background(), " @don.test ", " app\u2011pass word "); err != nil {
+	if err := publisher.VerifyCredentials(context.Background(), " @streamer.test ", " app\u2011pass word "); err != nil {
 		t.Fatalf("verify credentials: %v", err)
 	}
-	if createSessionPayload["identifier"] != "don.test" || createSessionPayload["password"] != "app-password" {
+	if createSessionPayload["identifier"] != "streamer.test" || createSessionPayload["password"] != "app-password" {
 		t.Fatalf("unexpected createSession payload: %+v", createSessionPayload)
 	}
 }

@@ -40,27 +40,39 @@ export interface DestinationFormState {
     name: string;
     environment: DestinationEnvironment;
     template: string;
+    endStreamEnabled: boolean;
+    endStreamTemplate: string;
     createdAt?: string;
     updatedAt?: string;
     discordServerName: string;
     discordChannelName: string;
     discordWebhookKey: string;
+    discordCardThumbnailURL: string;
+    discordCardThumbnailDataURL: string;
     blueskyAccountIdentifier: string;
     blueskyCredentialKey: string;
     blueskyLiveStatusTemplate: string;
     blueskyLiveNowDurationMinutes: string;
     blueskyCardThumbnailURL: string;
     blueskyCardThumbnailDataURL: string;
+    blueskyAdditionalImageURL: string;
+    blueskyAdditionalImageDataURL: string;
     mastodonAccountIdentifier: string;
     mastodonInstanceURL: string;
     mastodonCredentialKey: string;
+    mastodonAdditionalImageURL: string;
+    mastodonAdditionalImageDataURL: string;
 }
 
 interface DiscordConfig {
     serverName?: string;
     channelName?: string;
     webhookKey?: string;
+    cardThumbnailURL?: string;
+    cardThumbnailDataURL?: string;
     environment?: DestinationEnvironment;
+    endStreamEnabled?: boolean;
+    endStreamTemplate?: string;
 }
 
 interface BlueskyConfig {
@@ -70,14 +82,22 @@ interface BlueskyConfig {
     liveNowDurationMinutes?: number;
     cardThumbnailURL?: string;
     cardThumbnailDataURL?: string;
+    additionalImageURL?: string;
+    additionalImageDataURL?: string;
     environment?: DestinationEnvironment;
+    endStreamEnabled?: boolean;
+    endStreamTemplate?: string;
 }
 
 interface MastodonConfig {
     accountIdentifier?: string;
     instanceURL?: string;
     credentialKey?: string;
+    additionalImageURL?: string;
+    additionalImageDataURL?: string;
     environment?: DestinationEnvironment;
+    endStreamEnabled?: boolean;
+    endStreamTemplate?: string;
 }
 
 function parseConfigJSON<T>(configJSON: string): T {
@@ -116,20 +136,28 @@ export function createEmptyDestinationForm(platform: DestinationPlatform = 'disc
         name: '',
         environment: 'production',
         template: defaultTemplateForPlatform(platform),
+        endStreamEnabled: false,
+        endStreamTemplate: 'Thanks for hanging out at {{stream_title}} {{stream_url}}',
         createdAt: '',
         updatedAt: '',
         discordServerName: '',
         discordChannelName: '',
         discordWebhookKey: '',
+        discordCardThumbnailURL: '',
+        discordCardThumbnailDataURL: '',
         blueskyAccountIdentifier: '',
         blueskyCredentialKey: '',
         blueskyLiveStatusTemplate: '',
         blueskyLiveNowDurationMinutes: '120',
         blueskyCardThumbnailURL: '',
         blueskyCardThumbnailDataURL: '',
+        blueskyAdditionalImageURL: '',
+        blueskyAdditionalImageDataURL: '',
         mastodonAccountIdentifier: '',
         mastodonInstanceURL: '',
         mastodonCredentialKey: '',
+        mastodonAdditionalImageURL: '',
+        mastodonAdditionalImageDataURL: '',
     };
 }
 
@@ -151,6 +179,10 @@ export function toDestinationFormState(destination: DestinationInput): Destinati
         next.discordServerName = config.serverName ?? '';
         next.discordChannelName = config.channelName ?? '';
         next.discordWebhookKey = config.webhookKey ?? '';
+        next.discordCardThumbnailURL = config.cardThumbnailURL ?? '';
+        next.discordCardThumbnailDataURL = config.cardThumbnailDataURL ?? '';
+        next.endStreamEnabled = config.endStreamEnabled ?? false;
+        next.endStreamTemplate = config.endStreamTemplate ?? base.endStreamTemplate;
     }
 
     if (destination.platform === 'bluesky') {
@@ -162,6 +194,10 @@ export function toDestinationFormState(destination: DestinationInput): Destinati
         next.blueskyLiveNowDurationMinutes = String(config.liveNowDurationMinutes ?? 120);
         next.blueskyCardThumbnailURL = config.cardThumbnailURL ?? '';
         next.blueskyCardThumbnailDataURL = config.cardThumbnailDataURL ?? '';
+        next.blueskyAdditionalImageURL = config.additionalImageURL ?? '';
+        next.blueskyAdditionalImageDataURL = config.additionalImageDataURL ?? '';
+        next.endStreamEnabled = config.endStreamEnabled ?? false;
+        next.endStreamTemplate = config.endStreamTemplate ?? base.endStreamTemplate;
     }
 
     if (destination.platform === 'mastodon') {
@@ -170,6 +206,10 @@ export function toDestinationFormState(destination: DestinationInput): Destinati
         next.mastodonAccountIdentifier = config.accountIdentifier ?? '';
         next.mastodonInstanceURL = config.instanceURL ?? '';
         next.mastodonCredentialKey = config.credentialKey ?? '';
+        next.mastodonAdditionalImageURL = config.additionalImageURL ?? '';
+        next.mastodonAdditionalImageDataURL = config.additionalImageDataURL ?? '';
+        next.endStreamEnabled = config.endStreamEnabled ?? false;
+        next.endStreamTemplate = config.endStreamTemplate ?? base.endStreamTemplate;
     }
 
     return next;
@@ -184,6 +224,10 @@ export function toDestinationInput(form: DestinationFormState): DestinationInput
             serverName: form.discordServerName,
             channelName: form.discordChannelName,
             webhookKey: form.discordWebhookKey,
+            cardThumbnailURL: form.discordCardThumbnailURL,
+            cardThumbnailDataURL: form.discordCardThumbnailDataURL,
+            endStreamEnabled: form.endStreamEnabled,
+            endStreamTemplate: form.endStreamTemplate,
         });
     }
 
@@ -196,6 +240,10 @@ export function toDestinationInput(form: DestinationFormState): DestinationInput
             liveNowDurationMinutes: Number.parseInt(form.blueskyLiveNowDurationMinutes, 10) || 120,
             cardThumbnailURL: form.blueskyCardThumbnailURL,
             cardThumbnailDataURL: form.blueskyCardThumbnailDataURL,
+            additionalImageURL: form.blueskyAdditionalImageURL,
+            additionalImageDataURL: form.blueskyAdditionalImageDataURL,
+            endStreamEnabled: form.endStreamEnabled,
+            endStreamTemplate: form.endStreamTemplate,
         });
     }
 
@@ -205,6 +253,10 @@ export function toDestinationInput(form: DestinationFormState): DestinationInput
             accountIdentifier: form.mastodonAccountIdentifier,
             instanceURL: form.mastodonInstanceURL,
             credentialKey: form.mastodonCredentialKey,
+            additionalImageURL: form.mastodonAdditionalImageURL,
+            additionalImageDataURL: form.mastodonAdditionalImageDataURL,
+            endStreamEnabled: form.endStreamEnabled,
+            endStreamTemplate: form.endStreamTemplate,
         });
     }
 

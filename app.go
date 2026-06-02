@@ -65,7 +65,7 @@ func newAppWithDependencies(databasePath string, secretStore ports.SecretStore) 
 		settingsService: appsvc.NewSettingsService(settingsRepo),
 		destinationSvc:  appsvc.NewDestinationService(destinationRepo),
 		credentialSvc:   appsvc.NewCredentialSetupService(discordPublisher, blueskyPublisher, mastodonPublisher),
-		previewService:  appsvc.NewPreviewService(destinationRepo, settingsRepo),
+		previewService:  appsvc.NewPreviewService(destinationRepo, settingsRepo, liveNowSessionRepo),
 		logService:      appsvc.NewLogService(logRepo),
 		diagnosticsSvc:  appsvc.NewDiagnosticsService(settingsRepo, destinationRepo, logRepo, liveNowSessionRepo),
 		executionSvc: appsvc.NewExecutionService(
@@ -167,8 +167,8 @@ func (a *App) ForceGoLive(announcement domain.Announcement) (domain.ExecutionSum
 	return summary, err
 }
 
-func (a *App) EndStream() (domain.ExecutionSummary, error) {
-	summary, err := a.executionSvc.EndStream(a.ctx)
+func (a *App) EndStream(announcement domain.Announcement) (domain.ExecutionSummary, error) {
+	summary, err := a.executionSvc.EndStream(a.ctx, announcement)
 	if err == nil {
 		_ = a.logService.Append(a.ctx, "end_stream", "end_stream", executionLogStatus(summary), executionLogMessage("End Stream", summary))
 	}

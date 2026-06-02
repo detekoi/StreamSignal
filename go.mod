@@ -47,4 +47,4 @@ require (
 	modernc.org/memory v1.11.0 // indirect
 )
 
-// replace github.com/wailsapp/wails/v2 v2.12.0 => C:\Users\Don\go\pkg\mod
+// replace github.com/wailsapp/wails/v2 v2.12.0 => C:\Users\streamer\go\pkg\mod

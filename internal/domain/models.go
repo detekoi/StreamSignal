@@ -32,34 +32,18 @@ type Destination struct {
 }
 
 type AppSettings struct {
-	TestModeEnabled              bool   `json:"testModeEnabled"`
-	TestDiscordWebhookKey        string `json:"testDiscordWebhookKey"`
-	TestBlueskyAccountIdentifier string `json:"testBlueskyAccountIdentifier"`
-	TestBlueskyCredentialKey     string `json:"testBlueskyCredentialKey"`
-	TestMastodonCredentialKey    string `json:"testMastodonCredentialKey"`
-	TestMastodonInstanceURL      string `json:"testMastodonInstanceURL"`
-	DefaultStreamURL             string `json:"defaultStreamURL"`
-	DefaultHashtags              string `json:"defaultHashtags"`
-	DuplicateProtectionEnabled   bool   `json:"duplicateProtectionEnabled"`
-	DuplicateWindowMinutes       int    `json:"duplicateWindowMinutes"`
-	EndStreamPostEnabled         bool   `json:"endStreamPostEnabled"`
-	EndStreamTemplate            string `json:"endStreamTemplate"`
+	DefaultStreamURL           string `json:"defaultStreamURL"`
+	DefaultHashtags            string `json:"defaultHashtags"`
+	DuplicateProtectionEnabled bool   `json:"duplicateProtectionEnabled"`
+	DuplicateWindowMinutes     int    `json:"duplicateWindowMinutes"`
 }
 
 func DefaultAppSettings() AppSettings {
 	return AppSettings{
-		TestModeEnabled:              false,
-		TestDiscordWebhookKey:        "",
-		TestBlueskyAccountIdentifier: "",
-		TestBlueskyCredentialKey:     "",
-		TestMastodonCredentialKey:    "",
-		TestMastodonInstanceURL:      "",
-		DefaultStreamURL:             "",
-		DefaultHashtags:              "",
-		DuplicateProtectionEnabled:   true,
-		DuplicateWindowMinutes:       10,
-		EndStreamPostEnabled:         false,
-		EndStreamTemplate:            "",
+		DefaultStreamURL:           "",
+		DefaultHashtags:            "",
+		DuplicateProtectionEnabled: true,
+		DuplicateWindowMinutes:     10,
 	}
 }
 
@@ -81,6 +65,7 @@ type PreviewItem struct {
 	DestinationID   string              `json:"destinationID"`
 	DestinationName string              `json:"destinationName"`
 	Platform        DestinationPlatform `json:"platform"`
+	PreviewLabel    string              `json:"previewLabel"`
 	Content         string              `json:"content"`
 	CharacterCount  int                 `json:"characterCount"`
 	ValidationState string              `json:"validationState"`
@@ -103,11 +88,23 @@ type BlueskyLiveNowStatus struct {
 }
 
 type BlueskyPostMetadata struct {
-	StreamURL        string
-	StreamTitle      string
-	Description      string
+	StreamURL              string
+	StreamTitle            string
+	Description            string
+	ThumbnailURL           string
+	ThumbnailDataURL       string
+	AdditionalImageURL     string
+	AdditionalImageDataURL string
+}
+
+type DiscordPostMetadata struct {
 	ThumbnailURL     string
 	ThumbnailDataURL string
+}
+
+type MastodonPostMetadata struct {
+	AdditionalImageURL     string
+	AdditionalImageDataURL string
 }
 
 type ActiveLiveNowSession struct {

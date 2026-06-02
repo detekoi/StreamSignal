@@ -54,6 +54,52 @@ func TestValidateAnnouncementRejectsInvalidURL(t *testing.T) {
 	}
 }
 
+func TestValidateAnnouncementForTemplateOnlyRequiresUsedFields(t *testing.T) {
+	notes := ValidateAnnouncementForTemplate(Announcement{
+		Message: "Discord smoke test",
+	}, "{{message}}")
+
+	if len(notes) != 0 {
+		t.Fatalf("expected no notes for unused title and url fields, got %v", notes)
+	}
+}
+
+func TestValidateAnnouncementForTemplateRequiresReferencedOptionalFields(t *testing.T) {
+	notes := ValidateAnnouncementForTemplate(Announcement{}, "{{category}} {{message}} {{hashtags}}")
+
+	expected := []string{"Category is required.", "Message is required.", "Hashtags are required."}
+	if len(notes) != len(expected) {
+		t.Fatalf("expected %d notes, got %d: %v", len(expected), len(notes), notes)
+	}
+	for i, note := range expected {
+		if notes[i] != note {
+			t.Fatalf("expected note %d to be %q, got %q", i, note, notes[i])
+		}
+	}
+}
+
+func TestValidateAnnouncementForTemplateIgnoresUnusedInvalidURL(t *testing.T) {
+	notes := ValidateAnnouncementForTemplate(Announcement{
+		Message:   "Discord smoke test",
+		StreamURL: "not-a-url",
+	}, "{{message}}")
+
+	if len(notes) != 0 {
+		t.Fatalf("expected unused invalid url to be ignored, got %v", notes)
+	}
+}
+
+func TestValidateAnnouncementForTemplateRejectsReferencedInvalidURL(t *testing.T) {
+	notes := ValidateAnnouncementForTemplate(Announcement{
+		StreamTitle: "Going Live",
+		StreamURL:   "not-a-url",
+	}, "{{stream_title}} {{stream_url}}")
+
+	if len(notes) != 1 || !strings.Contains(notes[0], "valid absolute URL") {
+		t.Fatalf("expected invalid referenced url note, got %v", notes)
+	}
+}
+
 func TestValidatePreviewContentChecksCharacterLimits(t *testing.T) {
 	notes := ValidatePreviewContent(PlatformBluesky, strings.Repeat("x", 301))
 	if len(notes) == 0 {

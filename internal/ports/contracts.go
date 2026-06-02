@@ -48,7 +48,7 @@ type SecretStore interface {
 }
 
 type DiscordPublisher interface {
-	Publish(ctx context.Context, webhookKey string, content string) error
+	Publish(ctx context.Context, webhookKey string, content string, metadata domain.DiscordPostMetadata) error
 }
 
 type DiscordCredentialVerifier interface {
@@ -69,7 +69,7 @@ type BlueskyLiveNowManager interface {
 }
 
 type MastodonPublisher interface {
-	PublishPost(ctx context.Context, credentialKey string, instanceURL string, content string) error
+	PublishPost(ctx context.Context, credentialKey string, instanceURL string, content string, metadata domain.MastodonPostMetadata) error
 }
 
 type MastodonCredentialVerifier interface {

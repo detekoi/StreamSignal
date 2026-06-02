@@ -61,18 +61,10 @@ describe('streamsignal api wrappers', () => {
             updatedAt: '',
         };
         const settings = {
-            testModeEnabled: false,
-            testDiscordWebhookKey: '',
-            testBlueskyAccountIdentifier: '',
-            testBlueskyCredentialKey: '',
-            testMastodonCredentialKey: '',
-            testMastodonInstanceURL: '',
             defaultStreamURL: '',
             defaultHashtags: '',
             duplicateProtectionEnabled: true,
             duplicateWindowMinutes: 10,
-            endStreamPostEnabled: false,
-            endStreamTemplate: '',
         };
 
         vi.mocked(bindings.GetLogs).mockResolvedValue([] as never);
@@ -142,7 +134,7 @@ describe('streamsignal api wrappers', () => {
         await generatePreview(announcement, destinationIDs);
         await goLive(announcement, destinationIDs);
         await forceGoLive(announcement, destinationIDs);
-        await endStream();
+        await endStream(destinationIDs);
         await listPendingLiveNowSessions();
         await clearPendingLiveNowSession('bluesky-main');
         await listDestinations();
@@ -157,7 +149,7 @@ describe('streamsignal api wrappers', () => {
         expect(bindings.GeneratePreview).toHaveBeenCalledWith(expect.objectContaining({ ...announcement, destinationIDs }));
         expect(bindings.GoLive).toHaveBeenCalledWith(expect.objectContaining({ ...announcement, destinationIDs }));
         expect(bindings.ForceGoLive).toHaveBeenCalledWith(expect.objectContaining({ ...announcement, destinationIDs }));
-        expect(bindings.EndStream).toHaveBeenCalled();
+        expect(bindings.EndStream).toHaveBeenCalledWith(expect.objectContaining({ destinationIDs }));
         expect(bindings.ListPendingLiveNowSessions).toHaveBeenCalled();
         expect(bindings.ClearPendingLiveNowSession).toHaveBeenCalledWith('bluesky-main');
         expect(bindings.ListDestinations).toHaveBeenCalled();

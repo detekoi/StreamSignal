@@ -14,7 +14,11 @@ import (
 )
 
 type discordDestinationConfig struct {
-	WebhookKey string `json:"webhookKey"`
+	WebhookKey           string `json:"webhookKey"`
+	CardThumbnailURL     string `json:"cardThumbnailURL"`
+	CardThumbnailDataURL string `json:"cardThumbnailDataURL"`
+	EndStreamEnabled     bool   `json:"endStreamEnabled"`
+	EndStreamTemplate    string `json:"endStreamTemplate"`
 }
 
 type blueskyDestinationConfig struct {
@@ -24,11 +28,19 @@ type blueskyDestinationConfig struct {
 	LiveNowDurationMinutes int    `json:"liveNowDurationMinutes"`
 	CardThumbnailURL       string `json:"cardThumbnailURL"`
 	CardThumbnailDataURL   string `json:"cardThumbnailDataURL"`
+	AdditionalImageURL     string `json:"additionalImageURL"`
+	AdditionalImageDataURL string `json:"additionalImageDataURL"`
+	EndStreamEnabled       bool   `json:"endStreamEnabled"`
+	EndStreamTemplate      string `json:"endStreamTemplate"`
 }
 
 type mastodonDestinationConfig struct {
-	CredentialKey string `json:"credentialKey"`
-	InstanceURL   string `json:"instanceURL"`
+	CredentialKey          string `json:"credentialKey"`
+	InstanceURL            string `json:"instanceURL"`
+	AdditionalImageURL     string `json:"additionalImageURL"`
+	AdditionalImageDataURL string `json:"additionalImageDataURL"`
+	EndStreamEnabled       bool   `json:"endStreamEnabled"`
+	EndStreamTemplate      string `json:"endStreamTemplate"`
 }
 
 const defaultBlueskyLiveNowDurationMinutes = 120
@@ -36,6 +48,11 @@ const defaultBlueskyLiveNowDurationMinutes = 120
 type renderedExecutionTarget struct {
 	destination domain.Destination
 	content     string
+}
+
+type destinationEndStreamConfig struct {
+	Enabled  bool
+	Template string
 }
 
 type ExecutionService struct {
@@ -91,7 +108,7 @@ func (s *ExecutionService) ForceGoLive(ctx context.Context, announcement domain.
 	return buildExecutionSummary(domain.ExecutionModeGoLive, settings, results, nil), nil
 }
 
-func (s *ExecutionService) EndStream(ctx context.Context) (domain.ExecutionSummary, error) {
+func (s *ExecutionService) EndStream(ctx context.Context, announcement domain.Announcement) (domain.ExecutionSummary, error) {
 	settings, err := s.settings.Load(ctx)
 	if err != nil {
 		return domain.ExecutionSummary{}, err
@@ -101,6 +118,7 @@ func (s *ExecutionService) EndStream(ctx context.Context) (domain.ExecutionSumma
 	if err != nil {
 		return domain.ExecutionSummary{}, err
 	}
+	destinations = destinationsForSelection(destinations, announcement.DestinationIDs)
 
 	sessions, err := s.sessions.List(ctx)
 	if err != nil {
@@ -167,68 +185,86 @@ func (s *ExecutionService) EndStream(ctx context.Context) (domain.ExecutionSumma
 		})
 	}
 
-	if settings.EndStreamPostEnabled {
-		announcement := domain.NormalizeAnnouncement(domain.Announcement{
-			Message: settings.EndStreamTemplate,
-		}, settings)
-
-		for _, destination := range destinations {
-			if err := validateDestinationConfig(destination); err != nil {
-				results = append(results, domain.ExecutionResult{
-					DestinationID:   destination.ID,
-					DestinationName: destination.Name,
-					Platform:        destination.Platform,
-					State:           domain.ExecutionStateValidationError,
-					Message:         err.Error(),
-				})
-				continue
-			}
-
-			announcementForDestination := announcement
-			if session, ok := sessionByDestination[destination.ID]; ok {
-				announcementForDestination.StreamTitle = session.StreamTitle
-				announcementForDestination.StreamURL = session.StreamURL
-			}
-
-			content := templates.Render(settings.EndStreamTemplate, announcementForDestination, destination.Platform, s.clock.Now())
-			notes := domain.ValidatePreviewContent(destination.Platform, content)
-			if len(notes) > 0 {
-				results = append(results, domain.ExecutionResult{
-					DestinationID:   destination.ID,
-					DestinationName: destination.Name,
-					Platform:        destination.Platform,
-					State:           domain.ExecutionStateValidationError,
-					Message:         notes[0],
-					Content:         content,
-				})
-				continue
-			}
-
-			if err := s.publish(ctx, destination, content, announcementForDestination); err != nil {
-				state := domain.ExecutionStateFailed
-				if domain.IsIntegrationUnavailable(err) {
-					state = domain.ExecutionStateSkipped
-				}
-				results = append(results, domain.ExecutionResult{
-					DestinationID:   destination.ID,
-					DestinationName: destination.Name,
-					Platform:        destination.Platform,
-					State:           state,
-					Message:         fmt.Sprintf("End stream post failed: %s", err.Error()),
-					Content:         content,
-				})
-				continue
-			}
-
+	for _, destination := range destinations {
+		endConfig, err := endStreamConfigForDestination(destination)
+		if err != nil {
 			results = append(results, domain.ExecutionResult{
 				DestinationID:   destination.ID,
 				DestinationName: destination.Name,
 				Platform:        destination.Platform,
-				State:           domain.ExecutionStateSuccess,
-				Message:         "End stream post published successfully.",
+				State:           domain.ExecutionStateValidationError,
+				Message:         err.Error(),
+			})
+			continue
+		}
+		if !endConfig.Enabled {
+			results = append(results, domain.ExecutionResult{
+				DestinationID:   destination.ID,
+				DestinationName: destination.Name,
+				Platform:        destination.Platform,
+				State:           domain.ExecutionStateSkipped,
+				Message:         "End Stream message disabled for this destination.",
+			})
+			continue
+		}
+		if err := validateDestinationConfig(destination); err != nil {
+			results = append(results, domain.ExecutionResult{
+				DestinationID:   destination.ID,
+				DestinationName: destination.Name,
+				Platform:        destination.Platform,
+				State:           domain.ExecutionStateValidationError,
+				Message:         err.Error(),
+			})
+			continue
+		}
+
+		announcementForDestination := domain.NormalizeAnnouncement(domain.Announcement{
+			Message: endConfig.Template,
+		}, settings)
+		if session, ok := sessionByDestination[destination.ID]; ok {
+			announcementForDestination.StreamTitle = session.StreamTitle
+			announcementForDestination.StreamURL = session.StreamURL
+		}
+
+		content := templates.Render(endConfig.Template, announcementForDestination, destination.Platform, s.clock.Now())
+		notes := domain.ValidateAnnouncementForTemplate(announcementForDestination, endConfig.Template)
+		notes = append(notes, domain.ValidatePreviewContent(destination.Platform, content)...)
+		if len(notes) > 0 {
+			results = append(results, domain.ExecutionResult{
+				DestinationID:   destination.ID,
+				DestinationName: destination.Name,
+				Platform:        destination.Platform,
+				State:           domain.ExecutionStateValidationError,
+				Message:         notes[0],
 				Content:         content,
 			})
+			continue
 		}
+
+		if err := s.publish(ctx, destination, content, announcementForDestination); err != nil {
+			state := domain.ExecutionStateFailed
+			if domain.IsIntegrationUnavailable(err) {
+				state = domain.ExecutionStateSkipped
+			}
+			results = append(results, domain.ExecutionResult{
+				DestinationID:   destination.ID,
+				DestinationName: destination.Name,
+				Platform:        destination.Platform,
+				State:           state,
+				Message:         fmt.Sprintf("End stream post failed: %s", err.Error()),
+				Content:         content,
+			})
+			continue
+		}
+
+		results = append(results, domain.ExecutionResult{
+			DestinationID:   destination.ID,
+			DestinationName: destination.Name,
+			Platform:        destination.Platform,
+			State:           domain.ExecutionStateSuccess,
+			Message:         "End stream post published successfully.",
+			Content:         content,
+		})
 	}
 
 	return buildExecutionSummary(domain.ExecutionModeEndStream, settings, results, nil), nil
@@ -247,7 +283,6 @@ func (s *ExecutionService) execute(ctx context.Context, mode domain.ExecutionMod
 	destinations = destinationsForSelection(destinations, announcement.DestinationIDs)
 
 	normalized := domain.NormalizeAnnouncement(announcement, settings)
-	announcementNotes := domain.ValidateAnnouncement(normalized)
 	now := s.clock.Now()
 	results := make([]domain.ExecutionResult, 0, len(destinations))
 	renderedTargets := make([]renderedExecutionTarget, 0, len(destinations))
@@ -255,7 +290,7 @@ func (s *ExecutionService) execute(ctx context.Context, mode domain.ExecutionMod
 	for _, destination := range destinations {
 		content := templates.Render(destination.Template, normalized, destination.Platform, now)
 		renderedTargets = append(renderedTargets, renderedExecutionTarget{destination: destination, content: content})
-		notes := append([]string{}, announcementNotes...)
+		notes := domain.ValidateAnnouncementForTemplate(normalized, destination.Template)
 		notes = append(notes, domain.ValidatePreviewContent(destination.Platform, content)...)
 		if len(notes) > 0 {
 			results = append(results, domain.ExecutionResult{
@@ -446,7 +481,10 @@ func (s *ExecutionService) publish(ctx context.Context, destination domain.Desti
 		if config.WebhookKey == "" {
 			return fmt.Errorf("missing Discord webhook key")
 		}
-		return s.discord.Publish(ctx, config.WebhookKey, content)
+		return s.discord.Publish(ctx, config.WebhookKey, content, domain.DiscordPostMetadata{
+			ThumbnailURL:     config.CardThumbnailURL,
+			ThumbnailDataURL: config.CardThumbnailDataURL,
+		})
 	case domain.PlatformBluesky:
 		var config blueskyDestinationConfig
 		if err := json.Unmarshal([]byte(destination.ConfigJSON), &config); err != nil {
@@ -456,11 +494,13 @@ func (s *ExecutionService) publish(ctx context.Context, destination domain.Desti
 			return fmt.Errorf("missing Bluesky connection details")
 		}
 		return s.bluesky.PublishPost(ctx, config.AccountIdentifier, config.CredentialKey, content, domain.BlueskyPostMetadata{
-			StreamURL:        announcement.StreamURL,
-			StreamTitle:      announcement.StreamTitle,
-			Description:      announcement.Message,
-			ThumbnailURL:     config.CardThumbnailURL,
-			ThumbnailDataURL: config.CardThumbnailDataURL,
+			StreamURL:              announcement.StreamURL,
+			StreamTitle:            announcement.StreamTitle,
+			Description:            announcement.Message,
+			ThumbnailURL:           config.CardThumbnailURL,
+			ThumbnailDataURL:       config.CardThumbnailDataURL,
+			AdditionalImageURL:     config.AdditionalImageURL,
+			AdditionalImageDataURL: config.AdditionalImageDataURL,
 		})
 	case domain.PlatformMastodon:
 		var config mastodonDestinationConfig
@@ -470,7 +510,10 @@ func (s *ExecutionService) publish(ctx context.Context, destination domain.Desti
 		if config.CredentialKey == "" || config.InstanceURL == "" {
 			return fmt.Errorf("missing Mastodon connection details")
 		}
-		return s.mastodon.PublishPost(ctx, config.CredentialKey, config.InstanceURL, content)
+		return s.mastodon.PublishPost(ctx, config.CredentialKey, config.InstanceURL, content, domain.MastodonPostMetadata{
+			AdditionalImageURL:     config.AdditionalImageURL,
+			AdditionalImageDataURL: config.AdditionalImageDataURL,
+		})
 	default:
 		return fmt.Errorf("unsupported destination platform")
 	}
@@ -481,6 +524,31 @@ func blueskyLiveNowDuration(value int) int {
 		return value
 	}
 	return defaultBlueskyLiveNowDurationMinutes
+}
+
+func endStreamConfigForDestination(destination domain.Destination) (destinationEndStreamConfig, error) {
+	switch destination.Platform {
+	case domain.PlatformDiscord:
+		var config discordDestinationConfig
+		if err := json.Unmarshal([]byte(destination.ConfigJSON), &config); err != nil {
+			return destinationEndStreamConfig{}, fmt.Errorf("invalid Discord config")
+		}
+		return destinationEndStreamConfig{Enabled: config.EndStreamEnabled, Template: config.EndStreamTemplate}, nil
+	case domain.PlatformBluesky:
+		var config blueskyDestinationConfig
+		if err := json.Unmarshal([]byte(destination.ConfigJSON), &config); err != nil {
+			return destinationEndStreamConfig{}, fmt.Errorf("invalid Bluesky config")
+		}
+		return destinationEndStreamConfig{Enabled: config.EndStreamEnabled, Template: config.EndStreamTemplate}, nil
+	case domain.PlatformMastodon:
+		var config mastodonDestinationConfig
+		if err := json.Unmarshal([]byte(destination.ConfigJSON), &config); err != nil {
+			return destinationEndStreamConfig{}, fmt.Errorf("invalid Mastodon config")
+		}
+		return destinationEndStreamConfig{Enabled: config.EndStreamEnabled, Template: config.EndStreamTemplate}, nil
+	default:
+		return destinationEndStreamConfig{}, fmt.Errorf("unsupported destination platform")
+	}
 }
 
 func hasValidationResult(results []domain.ExecutionResult, destinationID string) bool {

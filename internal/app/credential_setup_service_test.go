@@ -83,7 +83,7 @@ func TestCredentialSetupServiceTestDestinationFailure(t *testing.T) {
 
 	result := service.TestDestination(context.Background(), domain.Destination{
 		Platform:   domain.PlatformBluesky,
-		ConfigJSON: `{"accountIdentifier":"don.test","credentialKey":"bad-password"}`,
+		ConfigJSON: `{"accountIdentifier":"streamer.test","credentialKey":"bad-password"}`,
 	})
 
 	if result.State != "FAILED" {

@@ -58,38 +58,6 @@ func TestSettingsServiceSaveValidatesDuplicateWindow(t *testing.T) {
 	}
 }
 
-func TestSettingsServiceSaveRequiresEndStreamTemplateWhenEnabled(t *testing.T) {
-	repository := &settingsRepositoryStub{}
-	service := NewSettingsService(repository)
-
-	_, err := service.Save(context.Background(), domain.AppSettings{
-		DuplicateProtectionEnabled: true,
-		DuplicateWindowMinutes:     10,
-		EndStreamPostEnabled:       true,
-	})
-	if err == nil {
-		t.Fatal("expected validation error")
-	}
-}
-
-func TestSettingsServiceSaveAllowsPartialTestModeCredentials(t *testing.T) {
-	repository := &settingsRepositoryStub{}
-	service := NewSettingsService(repository)
-
-	settings := domain.DefaultAppSettings()
-	settings.TestModeEnabled = true
-	settings.TestBlueskyAccountIdentifier = "streamsignal-test.bsky.social"
-	settings.TestBlueskyCredentialKey = "bluesky/test"
-
-	actual, err := service.Save(context.Background(), settings)
-	if err != nil {
-		t.Fatalf("save settings: %v", err)
-	}
-	if actual != settings {
-		t.Fatalf("expected settings %+v, got %+v", settings, actual)
-	}
-}
-
 func TestSettingsServiceSavePassesRepositoryError(t *testing.T) {
 	repository := &settingsRepositoryStub{saveErr: errors.New("boom")}
 	service := NewSettingsService(repository)
@@ -104,18 +72,10 @@ func TestSettingsServiceSaveReturnsPersistedSettings(t *testing.T) {
 	repository := &settingsRepositoryStub{}
 	service := NewSettingsService(repository)
 	expected := domain.AppSettings{
-		TestModeEnabled:              true,
-		TestDiscordWebhookKey:        "discord/test",
-		TestBlueskyAccountIdentifier: "don.test",
-		TestBlueskyCredentialKey:     "bluesky/test",
-		TestMastodonCredentialKey:    "mastodon/test",
-		TestMastodonInstanceURL:      "https://mastodon.test",
-		DefaultStreamURL:             "https://example.com/live",
-		DefaultHashtags:              "#vtuber",
-		DuplicateProtectionEnabled:   true,
-		DuplicateWindowMinutes:       12,
-		EndStreamPostEnabled:         true,
-		EndStreamTemplate:            "Thanks!",
+		DefaultStreamURL:           "https://example.com/live",
+		DefaultHashtags:            "#vtuber",
+		DuplicateProtectionEnabled: true,
+		DuplicateWindowMinutes:     12,
 	}
 
 	actual, err := service.Save(context.Background(), expected)

@@ -16,7 +16,7 @@ describe('destination mappings', () => {
             name: 'Main Discord',
             enabled: true,
             template: '{{stream_title}}',
-            configJSON: '{"serverName":"My Server","channelName":"go-live","webhookKey":"discord/main"}',
+            configJSON: '{"serverName":"My Server","channelName":"go-live","webhookKey":"discord/main","cardThumbnailURL":"https://example.com/card.png","cardThumbnailDataURL":"data:image/png;base64,abc","endStreamEnabled":true,"endStreamTemplate":"Bye {{stream_title}}"}',
             createdAt: '',
             updatedAt: '',
         };
@@ -26,25 +26,53 @@ describe('destination mappings', () => {
         expect(form.discordServerName).toBe('My Server');
         expect(form.discordChannelName).toBe('go-live');
         expect(form.discordWebhookKey).toBe('discord/main');
+        expect(form.discordCardThumbnailURL).toBe('https://example.com/card.png');
+        expect(form.discordCardThumbnailDataURL).toBe('data:image/png;base64,abc');
+        expect(form.endStreamEnabled).toBe(true);
+        expect(form.endStreamTemplate).toBe('Bye {{stream_title}}');
         expect(form.environment).toBe('production');
+    });
+
+    it('serializes a Discord form state into destination config json', () => {
+        const form = createEmptyDestinationForm('discord');
+        form.name = 'Main Discord';
+        form.template = '{{stream_title}}';
+        form.discordServerName = 'My Server';
+        form.discordChannelName = 'go-live';
+        form.discordWebhookKey = 'discord/main';
+        form.discordCardThumbnailURL = 'https://example.com/card.png';
+        form.discordCardThumbnailDataURL = 'data:image/png;base64,abc';
+        form.endStreamEnabled = true;
+        form.endStreamTemplate = 'Bye {{stream_title}}';
+
+        const destination = toDestinationInput(form);
+
+        expect(destination.platform).toBe('discord');
+        expect(destination.configJSON).toBe(
+            '{"environment":"production","serverName":"My Server","channelName":"go-live","webhookKey":"discord/main","cardThumbnailURL":"https://example.com/card.png","cardThumbnailDataURL":"data:image/png;base64,abc","endStreamEnabled":true,"endStreamTemplate":"Bye {{stream_title}}"}',
+        );
     });
 
     it('serializes a Bluesky form state into destination config json', () => {
         const form = createEmptyDestinationForm('bluesky');
         form.name = 'Main Bluesky';
         form.template = '{{stream_title}}';
-        form.blueskyAccountIdentifier = 'don.test';
+        form.blueskyAccountIdentifier = 'streamer.test';
         form.blueskyCredentialKey = 'bluesky/main';
         form.blueskyLiveStatusTemplate = 'LIVE {{stream_title}}';
         form.blueskyLiveNowDurationMinutes = '90';
         form.blueskyCardThumbnailURL = 'https://example.com/avatar.png';
         form.blueskyCardThumbnailDataURL = 'data:image/png;base64,abc';
+        form.blueskyAdditionalImageURL = 'https://example.com/additional.png';
+        form.blueskyAdditionalImageDataURL = 'data:image/png;base64,def';
+        form.endStreamEnabled = true;
+        form.endStreamTemplate = 'Bye {{stream_title}}';
 
         const destination = toDestinationInput(form);
 
         expect(destination.platform).toBe('bluesky');
         expect(destination.configJSON).toBe(
-            '{"environment":"production","accountIdentifier":"don.test","credentialKey":"bluesky/main","liveStatusTemplate":"LIVE {{stream_title}}","liveNowDurationMinutes":90,"cardThumbnailURL":"https://example.com/avatar.png","cardThumbnailDataURL":"data:image/png;base64,abc"}',
+            '{"environment":"production","accountIdentifier":"streamer.test","credentialKey":"bluesky/main","liveStatusTemplate":"LIVE {{stream_title}}","liveNowDurationMinutes":90,"cardThumbnailURL":"https://example.com/avatar.png","cardThumbnailDataURL":"data:image/png;base64,abc","additionalImageURL":"https://example.com/additional.png","additionalImageDataURL":"data:image/png;base64,def","endStreamEnabled":true,"endStreamTemplate":"Bye {{stream_title}}"}',
         );
     });
 
@@ -55,19 +83,23 @@ describe('destination mappings', () => {
             name: 'Main Bluesky',
             enabled: true,
             template: '{{stream_title}}',
-            configJSON: '{"environment":"test","accountIdentifier":"don.test","credentialKey":"bluesky/main","liveStatusTemplate":"LIVE {{stream_title}}","liveNowDurationMinutes":45,"cardThumbnailURL":"https://example.com/avatar.png","cardThumbnailDataURL":"data:image/png;base64,abc"}',
+            configJSON: '{"environment":"test","accountIdentifier":"streamer.test","credentialKey":"bluesky/main","liveStatusTemplate":"LIVE {{stream_title}}","liveNowDurationMinutes":45,"cardThumbnailURL":"https://example.com/avatar.png","cardThumbnailDataURL":"data:image/png;base64,abc","additionalImageURL":"https://example.com/additional.png","additionalImageDataURL":"data:image/png;base64,def","endStreamEnabled":true,"endStreamTemplate":"Bye {{stream_title}}"}',
             createdAt: '',
             updatedAt: '',
         };
 
         const form = toDestinationFormState(destination);
 
-        expect(form.blueskyAccountIdentifier).toBe('don.test');
+        expect(form.blueskyAccountIdentifier).toBe('streamer.test');
         expect(form.blueskyCredentialKey).toBe('bluesky/main');
         expect(form.blueskyLiveStatusTemplate).toBe('LIVE {{stream_title}}');
         expect(form.blueskyLiveNowDurationMinutes).toBe('45');
         expect(form.blueskyCardThumbnailURL).toBe('https://example.com/avatar.png');
         expect(form.blueskyCardThumbnailDataURL).toBe('data:image/png;base64,abc');
+        expect(form.blueskyAdditionalImageURL).toBe('https://example.com/additional.png');
+        expect(form.blueskyAdditionalImageDataURL).toBe('data:image/png;base64,def');
+        expect(form.endStreamEnabled).toBe(true);
+        expect(form.endStreamTemplate).toBe('Bye {{stream_title}}');
         expect(form.environment).toBe('test');
     });
 
@@ -75,15 +107,19 @@ describe('destination mappings', () => {
         const form = createEmptyDestinationForm('mastodon');
         form.name = 'Main Mastodon';
         form.template = '{{stream_title}}';
-        form.mastodonAccountIdentifier = '@don@example.social';
+        form.mastodonAccountIdentifier = '@streamer@example.social';
         form.mastodonInstanceURL = 'https://mastodon.social';
         form.mastodonCredentialKey = 'mastodon/main';
+        form.mastodonAdditionalImageURL = 'https://example.com/mastodon.png';
+        form.mastodonAdditionalImageDataURL = 'data:image/png;base64,ghi';
+        form.endStreamEnabled = true;
+        form.endStreamTemplate = 'Bye {{stream_title}}';
 
         const destination = toDestinationInput(form);
 
         expect(destination.platform).toBe('mastodon');
         expect(destination.configJSON).toBe(
-            '{"environment":"production","accountIdentifier":"@don@example.social","instanceURL":"https://mastodon.social","credentialKey":"mastodon/main"}',
+            '{"environment":"production","accountIdentifier":"@streamer@example.social","instanceURL":"https://mastodon.social","credentialKey":"mastodon/main","additionalImageURL":"https://example.com/mastodon.png","additionalImageDataURL":"data:image/png;base64,ghi","endStreamEnabled":true,"endStreamTemplate":"Bye {{stream_title}}"}',
         );
     });
 
