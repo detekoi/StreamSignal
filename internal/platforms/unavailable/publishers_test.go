@@ -31,7 +31,7 @@ func TestUnavailablePublishersReturnIntegrationUnavailableErrors(t *testing.T) {
 			name:     "mastodon",
 			platform: domain.PlatformMastodon,
 			call: func() error {
-				return (MastodonPublisher{}).PublishPost(context.Background(), "credential", "https://example.social", "hello")
+				return (MastodonPublisher{}).PublishPost(context.Background(), "credential", "https://example.social", "hello", domain.MastodonPostMetadata{})
 			},
 		},
 	}

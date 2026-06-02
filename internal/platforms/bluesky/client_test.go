@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -54,7 +55,9 @@ func TestPublisherCreatesSessionThenPublishesPost(t *testing.T) {
 	}))
 	defer server.Close()
 
-	publisher := NewPublisher(server.URL, server.Client())
+	client := server.Client()
+	client.Transport = rewriteHostTransport(t, client.Transport, server.URL, "example.com")
+	publisher := NewPublisher(server.URL, client)
 	publisher.now = func() time.Time {
 		return time.Date(2026, 5, 31, 19, 0, 0, 0, time.UTC)
 	}
@@ -64,7 +67,7 @@ func TestPublisherCreatesSessionThenPublishesPost(t *testing.T) {
 		StreamURL:    "https://example.com/live",
 		StreamTitle:  "Going Live",
 		Description:  "Come hang out",
-		ThumbnailURL: server.URL + "/thumbnail.png",
+		ThumbnailURL: "https://example.com/thumbnail.png",
 	}); err != nil {
 		t.Fatalf("publish post: %v", err)
 	}
@@ -112,6 +115,41 @@ func TestPublisherCreatesSessionThenPublishesPost(t *testing.T) {
 	if ref["$link"] != "thumb-cid" || thumb["mimeType"] != "image/png" || thumb["size"] != float64(8) {
 		t.Fatalf("unexpected external thumb: %+v", thumb)
 	}
+}
+
+func rewriteHostTransport(t *testing.T, base http.RoundTripper, targetBaseURL string, host string) http.RoundTripper {
+	t.Helper()
+	target, err := url.Parse(targetBaseURL)
+	if err != nil {
+		t.Fatalf("parse target URL: %v", err)
+	}
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	return roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		if request.URL.Hostname() == host {
+			next := request.Clone(request.Context())
+			next.URL = cloneURL(request.URL)
+			next.URL.Scheme = target.Scheme
+			next.URL.Host = target.Host
+			return base.RoundTrip(next)
+		}
+		return base.RoundTrip(request)
+	})
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return fn(request)
+}
+
+func cloneURL(value *url.URL) *url.URL {
+	if value == nil {
+		return nil
+	}
+	next := *value
+	return &next
 }
 
 func TestPublisherUploadsDataURLThumbnailForPostCard(t *testing.T) {
@@ -168,9 +206,67 @@ func TestPublisherUploadsDataURLThumbnailForPostCard(t *testing.T) {
 	}
 }
 
+func TestPublisherUploadsAdditionalImageWhenNoPostCardIsPresent(t *testing.T) {
+	var createRecordPayload map[string]any
+	var uploadedImage string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/xrpc/com.atproto.server.createSession":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"accessJwt":"jwt-token","did":"did:plc:test"}`))
+		case "/xrpc/com.atproto.repo.uploadBlob":
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				t.Fatalf("read uploaded image: %v", err)
+			}
+			uploadedImage = string(body)
+			if r.Header.Get("Authorization") != "Bearer jwt-token" {
+				t.Fatalf("expected bearer token, got %q", r.Header.Get("Authorization"))
+			}
+			if r.Header.Get("Content-Type") != "image/png" {
+				t.Fatalf("expected image/png upload, got %q", r.Header.Get("Content-Type"))
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"blob":{"$type":"blob","ref":{"$link":"image-cid"},"mimeType":"image/png","size":8}}`))
+		case "/xrpc/com.atproto.repo.createRecord":
+			if err := json.NewDecoder(r.Body).Decode(&createRecordPayload); err != nil {
+				t.Fatalf("decode createRecord payload: %v", err)
+			}
+			w.WriteHeader(http.StatusOK)
+		default:
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	publisher := NewPublisher(server.URL, server.Client())
+	err := publisher.PublishPost(context.Background(), "don.test", "app-password", "Going Live", domain.BlueskyPostMetadata{
+		AdditionalImageDataURL: "data:image/png;base64,ZmFrZS1wbmc=",
+	})
+	if err != nil {
+		t.Fatalf("publish post: %v", err)
+	}
+	if uploadedImage != "fake-png" {
+		t.Fatalf("expected decoded image upload, got %q", uploadedImage)
+	}
+	record := createRecordPayload["record"].(map[string]any)
+	embed := record["embed"].(map[string]any)
+	if embed["$type"] != "app.bsky.embed.images" {
+		t.Fatalf("expected image embed, got %+v", embed)
+	}
+	images := embed["images"].([]any)
+	image := images[0].(map[string]any)
+	blob := image["image"].(map[string]any)
+	ref := blob["ref"].(map[string]any)
+	if ref["$link"] != "image-cid" {
+		t.Fatalf("unexpected image blob ref: %+v", blob)
+	}
+}
+
 func TestPublisherRejectsOversizedDataURLThumbnailBeforeDecode(t *testing.T) {
 	encoded := strings.Repeat("A", base64EncodedLimit()+8)
-	_, _, err := decodeImageDataURL("data:image/png;base64," + encoded)
+	_, _, err := decodeCardThumbnailDataURL("data:image/png;base64," + encoded)
 	if err == nil || err.Error() != "Bluesky card thumbnail must be 1 MB or smaller" {
 		t.Fatalf("expected oversized thumbnail error, got %v", err)
 	}

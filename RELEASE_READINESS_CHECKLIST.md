@@ -7,6 +7,7 @@ Current reality:
 - core workflows are implemented
 - Discord has been manually validated for webhook auth, Go Live posting, selected-destination targeting, optional additional image embeds, and destination-level End Stream behavior
 - Bluesky has been manually validated for app-password auth, Go Live posting, rich stream links/cards, configurable `Live Now`, End Stream clearing, and recovery cleanup
+- Mastodon has been manually validated for access-token auth, Go Live posting, and optional additional image attachment
 - automated tests and CI gates are in place
 - the app is still in workflow-validation and usability-refinement, not final MVP signoff
 
@@ -32,7 +33,9 @@ Ship StreamSignal in a way that is:
 - confirm End Stream clears Bluesky `Live Now`
 - confirm destination-level End Stream posting can be enabled or disabled independently per destination
 - confirm Bluesky card thumbnail behavior works with both a direct image URL and an uploaded local image
+- confirm Bluesky additional image behavior is clear when no preview card is posted
 - confirm Discord additional image behavior is understandable and does not imply Twitch inline playback
+- confirm Mastodon additional image behavior works with both a public image URL and an uploaded local image
 - confirm optional end-stream posting works as expected
 - confirm test destinations publish only to their configured test accounts or channels
 - confirm duplicate warning and force-confirm flows behave correctly

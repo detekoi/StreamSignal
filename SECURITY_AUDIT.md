@@ -173,7 +173,7 @@ Assessment:
 - it reduces casual secret exposure during ordinary configuration edits
 - users still retain full control to replace or remove stored secrets when needed
 
-### Reviewed: Bluesky rich cards and thumbnail uploads
+### Reviewed: Bluesky rich cards, thumbnails, and additional images
 
 Severity:
 
@@ -182,23 +182,25 @@ Severity:
 What was checked:
 
 - direct card-thumbnail URL handling
+- additional image URL handling
 - local image upload handling
 - frontend resizing before save
-- backend thumbnail fetch, decode, and upload limits
+- backend image fetch, decode, and upload limits
 - diagnostics and logging around destination configuration
 
 Result:
 
-- thumbnail URLs must be valid HTTP or HTTPS URLs before fetch
-- fetched thumbnails use the existing HTTP timeout and bounded reads
-- uploaded thumbnail data must be an image data URL and is rejected before decode if the encoded payload is too large
-- decoded and fetched thumbnails are limited to Bluesky's current 1 MB blob size expectation
-- thumbnail data is not a credential secret and is not exported through diagnostics, but it is stored locally in destination configuration when a local image is selected
+- thumbnail and additional-image URLs must be valid HTTP or HTTPS URLs before fetch
+- fetched image URLs are rejected if they resolve to localhost, private network ranges, link-local ranges, unspecified addresses, or multicast addresses
+- fetched images use the existing HTTP timeout and bounded reads
+- uploaded image data must be an image data URL and is rejected before decode if the encoded payload is too large
+- decoded and fetched Bluesky images are limited to Bluesky's current 1 MB blob size expectation
+- local image data is not a credential secret and is not exported through diagnostics, but it is stored locally in destination configuration when a local image is selected
 
-Residual caution:
+Product note:
 
-- local thumbnail images can still be personal content, so users should treat the local StreamSignal database as private application data
-- if StreamSignal ever accepts remote or shared configuration from untrusted users, thumbnail URL fetching should be revisited as a stricter SSRF boundary
+- local images can still be personal content, so users should treat the local StreamSignal database as private application data
+- normal Bluesky feed posts can use the stream preview card or an additional image embed; StreamSignal keeps the stream preview card as the higher-priority embed when both are configured
 
 ### Reviewed: Discord webhook posting and additional images
 
@@ -222,6 +224,36 @@ Result:
 - decoded uploaded Discord images are limited to 8 MB before posting
 - End Stream posts now respect destination-level enablement, reducing accidental cross-posting risk
 - a local secret-pattern scan after this pass found only placeholders, test fixtures, generated model field names, and expected secret-handling code references
+
+### Reviewed: Mastodon posting and additional images
+
+Severity:
+
+- low
+
+What was checked:
+
+- manual access-token posting
+- optional image URL attachments
+- optional uploaded image attachments
+- media upload before status publishing
+- destination-level End Stream enablement
+
+Result:
+
+- Mastodon access tokens are treated as destination secrets and stored through the secret-store-backed persistence layer
+- additional-image URLs must be valid HTTP or HTTPS URLs before fetch
+- fetched image URLs are rejected if they resolve to localhost, private network ranges, link-local ranges, unspecified addresses, or multicast addresses
+- fetched images use the existing HTTP timeout and bounded reads
+- uploaded image data must be an image data URL and is rejected before decode if the encoded payload is too large
+- decoded and fetched Mastodon images are limited to 8 MB before posting
+- media uploads use multipart form data and the returned media ID is attached to the status payload
+- End Stream posts respect destination-level enablement
+
+Assessment:
+
+- no high-severity security concerns were found in the Mastodon/image changes
+- the previous open image-fetch caution has been remediated with explicit public-address URL validation before Bluesky and Mastodon image fetches
 
 ## OWASP Alignment Notes
 

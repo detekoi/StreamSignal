@@ -208,7 +208,9 @@ function asArray<T>(value: T[] | null | undefined): T[] {
 }
 
 const BLUESKY_CARD_THUMBNAIL_MAX_BYTES = 1_000_000;
+const BLUESKY_ADDITIONAL_IMAGE_MAX_BYTES = 1_000_000;
 const DISCORD_CARD_THUMBNAIL_MAX_BYTES = 8_000_000;
+const MASTODON_ADDITIONAL_IMAGE_MAX_BYTES = 8_000_000;
 const BLUESKY_CARD_THUMBNAIL_MAX_EDGE = 1200;
 
 function fileToDataURL(file: File): Promise<string> {
@@ -330,16 +332,28 @@ function guidedSetupSteps(platform: DestinationInput['platform']): GuidedSetupSt
         case 'mastodon':
             return [
                 {
-                    title: 'Step 1: Create a posting token',
-                    detail: 'In your Mastodon account settings, create an access token with permission to post statuses, then copy the token and your instance URL.',
+                    title: 'Step 1: Open your Mastodon instance',
+                    detail: 'Sign in to the account StreamSignal should post from, then open Preferences > Development. On some instances this is under Settings > Development.',
                 },
                 {
-                    title: 'Step 2: Paste the instance URL and token',
-                    detail: 'Use the full instance URL, like https://mastodon.social, plus the token that belongs to the account you want StreamSignal to use.',
+                    title: 'Step 2: Create a new application',
+                    detail: 'Name it StreamSignal. If Mastodon asks for a website, you can leave it blank or use your stream/profile URL.',
                 },
                 {
-                    title: 'Step 3: Verify the token before saving',
-                    detail: 'Test Connection checks the token against your Mastodon account so invalid or expired tokens fail early.',
+                    title: 'Step 3: Set the redirect URI',
+                    detail: 'Use urn:ietf:wg:oauth:2.0:oob if the field is required. StreamSignal only needs a manually copied access token and does not run an OAuth redirect server.',
+                },
+                {
+                    title: 'Step 4: Choose scopes',
+                    detail: 'Enable write:statuses so StreamSignal can publish posts. If your instance requires account verification for token testing, also enable read:accounts.',
+                },
+                {
+                    title: 'Step 5: Copy the access token',
+                    detail: 'After saving the application, copy the generated access token. Paste the full instance URL, like https://mastodon.social, and the access token into StreamSignal.',
+                },
+                {
+                    title: 'Step 6: Test before saving',
+                    detail: 'Test Connection checks the token against your Mastodon account so invalid, expired, or under-scoped tokens fail early.',
                 },
             ];
         default:
@@ -404,6 +418,8 @@ function App() {
     const initializedSelection = useRef(false);
     const discordThumbnailInputRef = useRef<HTMLInputElement | null>(null);
     const blueskyThumbnailInputRef = useRef<HTMLInputElement | null>(null);
+    const blueskyAdditionalImageInputRef = useRef<HTMLInputElement | null>(null);
+    const mastodonAdditionalImageInputRef = useRef<HTMLInputElement | null>(null);
 
     useEffect(() => {
         void refreshDestinations();
@@ -715,6 +731,20 @@ function App() {
         updateDestination('blueskyCardThumbnailDataURL', '');
     }
 
+    function clearBlueskyAdditionalImage() {
+        if (blueskyAdditionalImageInputRef.current) {
+            blueskyAdditionalImageInputRef.current.value = '';
+        }
+        updateDestination('blueskyAdditionalImageDataURL', '');
+    }
+
+    function clearMastodonAdditionalImage() {
+        if (mastodonAdditionalImageInputRef.current) {
+            mastodonAdditionalImageInputRef.current.value = '';
+        }
+        updateDestination('mastodonAdditionalImageDataURL', '');
+    }
+
     function clearDiscordThumbnailImage() {
         if (discordThumbnailInputRef.current) {
             discordThumbnailInputRef.current.value = '';
@@ -782,6 +812,72 @@ function App() {
         } catch (err: unknown) {
             if (blueskyThumbnailInputRef.current) {
                 blueskyThumbnailInputRef.current.value = '';
+            }
+            const message = errorMessage(err, 'Unable to prepare selected image.');
+            setDestinationError(message);
+        }
+    }
+
+    async function onBlueskyAdditionalImageUpload(file: File | undefined) {
+        setDestinationConnectionResult(null);
+        setDestinationHelperStatus(null);
+        setDestinationError(null);
+
+        if (!file) {
+            return;
+        }
+        if (!file.type.startsWith('image/')) {
+            setDestinationError('Additional image must be an image.');
+            return;
+        }
+
+        try {
+            const image = await prepareCardThumbnail(file, BLUESKY_ADDITIONAL_IMAGE_MAX_BYTES);
+            setDestinationForm((current) => ({
+                ...current,
+                blueskyAdditionalImageURL: '',
+                blueskyAdditionalImageDataURL: image.dataURL,
+            }));
+            if (blueskyAdditionalImageInputRef.current) {
+                blueskyAdditionalImageInputRef.current.value = '';
+            }
+            setDestinationHelperStatus(image.compressed ? `Selected and compressed ${file.name}` : `Selected ${file.name}`);
+        } catch (err: unknown) {
+            if (blueskyAdditionalImageInputRef.current) {
+                blueskyAdditionalImageInputRef.current.value = '';
+            }
+            const message = errorMessage(err, 'Unable to prepare selected image.');
+            setDestinationError(message);
+        }
+    }
+
+    async function onMastodonAdditionalImageUpload(file: File | undefined) {
+        setDestinationConnectionResult(null);
+        setDestinationHelperStatus(null);
+        setDestinationError(null);
+
+        if (!file) {
+            return;
+        }
+        if (!file.type.startsWith('image/')) {
+            setDestinationError('Additional image must be an image.');
+            return;
+        }
+
+        try {
+            const image = await prepareCardThumbnail(file, MASTODON_ADDITIONAL_IMAGE_MAX_BYTES);
+            setDestinationForm((current) => ({
+                ...current,
+                mastodonAdditionalImageURL: '',
+                mastodonAdditionalImageDataURL: image.dataURL,
+            }));
+            if (mastodonAdditionalImageInputRef.current) {
+                mastodonAdditionalImageInputRef.current.value = '';
+            }
+            setDestinationHelperStatus(image.compressed ? `Selected and compressed ${file.name}` : `Selected ${file.name}`);
+        } catch (err: unknown) {
+            if (mastodonAdditionalImageInputRef.current) {
+                mastodonAdditionalImageInputRef.current.value = '';
             }
             const message = errorMessage(err, 'Unable to prepare selected image.');
             setDestinationError(message);
@@ -1200,7 +1296,7 @@ function App() {
                                                     setDestinationHelperStatus(null);
                                                 }}
                                             >
-                                                New Destination
+                                                Reset Form
                                             </button>
                                         </div>
                                     </div>
@@ -1509,9 +1605,19 @@ function App() {
                                             />
                                         </label>
                                         <label className="field">
-                                            <span>Card Thumbnail URL</span>
+                                            <div className="field-label-row">
+                                                <span>Preview Card Image URL</span>
+                                                <button
+                                                    type="button"
+                                                    className="info-tooltip"
+                                                    aria-label="Bluesky preview card image information"
+                                                >
+                                                    i
+                                                    <span role="tooltip">Bluesky only. Used as the stream link preview card image.</span>
+                                                </button>
+                                            </div>
                                             <input
-                                                aria-label="Card Thumbnail URL"
+                                                aria-label="Bluesky Preview Card Image URL"
                                                 value={destinationForm.blueskyCardThumbnailURL}
                                                 onChange={(event) => {
                                                     updateDestination('blueskyCardThumbnailURL', event.target.value);
@@ -1523,10 +1629,20 @@ function App() {
                                             />
                                         </label>
                                         <label className="field">
-                                            <span>Card Thumbnail Image</span>
+                                            <div className="field-label-row">
+                                                <span>Preview Card Image Upload</span>
+                                                <button
+                                                    type="button"
+                                                    className="info-tooltip"
+                                                    aria-label="Bluesky preview card image upload information"
+                                                >
+                                                    i
+                                                    <span role="tooltip">Bluesky only. Used as the stream link preview card image.</span>
+                                                </button>
+                                            </div>
                                             <input
                                                 ref={blueskyThumbnailInputRef}
-                                                aria-label="Card Thumbnail Image"
+                                                aria-label="Bluesky Preview Card Image Upload"
                                                 type="file"
                                                 accept="image/*"
                                                 onChange={(event) => void onBlueskyThumbnailUpload(event.target.files?.[0])}
@@ -1535,11 +1651,68 @@ function App() {
                                         </label>
                                         {destinationForm.blueskyCardThumbnailDataURL ? (
                                             <div className="form-actions">
-                                                <span>Uploaded thumbnail selected</span>
+                                                <span>Uploaded preview card image selected</span>
                                                 <button
                                                     type="button"
                                                     className="ghost-button"
                                                     onClick={clearBlueskyThumbnailImage}
+                                                >
+                                                    Clear Image
+                                                </button>
+                                            </div>
+                                        ) : null}
+                                        <label className="field">
+                                            <div className="field-label-row">
+                                                <span>Additional Image URL</span>
+                                                <button
+                                                    type="button"
+                                                    className="info-tooltip"
+                                                    aria-label="Bluesky additional image information"
+                                                >
+                                                    i
+                                                    <span role="tooltip">Attached as a Bluesky image when no stream preview card is posted.</span>
+                                                </button>
+                                            </div>
+                                            <input
+                                                aria-label="Bluesky Additional Image URL"
+                                                value={destinationForm.blueskyAdditionalImageURL}
+                                                onChange={(event) => {
+                                                    updateDestination('blueskyAdditionalImageURL', event.target.value);
+                                                    if (event.target.value.trim() !== '') {
+                                                        clearBlueskyAdditionalImage();
+                                                    }
+                                                }}
+                                                placeholder="https://static-cdn.jtvnw.net/..."
+                                            />
+                                        </label>
+                                        <label className="field">
+                                            <div className="field-label-row">
+                                                <span>Additional Image Upload</span>
+                                                <button
+                                                    type="button"
+                                                    className="info-tooltip"
+                                                    aria-label="Bluesky additional image upload information"
+                                                >
+                                                    i
+                                                    <span role="tooltip">Attached as a Bluesky image when no stream preview card is posted.</span>
+                                                </button>
+                                            </div>
+                                            <input
+                                                ref={blueskyAdditionalImageInputRef}
+                                                aria-label="Bluesky Additional Image Upload"
+                                                type="file"
+                                                accept="image/*"
+                                                onChange={(event) => void onBlueskyAdditionalImageUpload(event.target.files?.[0])}
+                                            />
+                                            <small>Large images are resized before posting.</small>
+                                        </label>
+                                        {destinationForm.blueskyAdditionalImageDataURL ? (
+                                            <div className="form-actions">
+                                                <span>Uploaded additional image selected</span>
+                                                <button
+                                                    type="button"
+                                                    className="ghost-button"
+                                                    onClick={clearBlueskyAdditionalImage}
                                                 >
                                                     Clear Image
                                                 </button>
@@ -1577,6 +1750,43 @@ function App() {
                                                 placeholder="Paste Mastodon access token"
                                             />
                                         </label>
+                                        <label className="field">
+                                            <span>Additional Image URL</span>
+                                            <input
+                                                aria-label="Mastodon Additional Image URL"
+                                                value={destinationForm.mastodonAdditionalImageURL}
+                                                onChange={(event) => {
+                                                    updateDestination('mastodonAdditionalImageURL', event.target.value);
+                                                    if (event.target.value.trim() !== '') {
+                                                        clearMastodonAdditionalImage();
+                                                    }
+                                                }}
+                                                placeholder="https://static-cdn.jtvnw.net/..."
+                                            />
+                                        </label>
+                                        <label className="field">
+                                            <span>Additional Image Upload</span>
+                                            <input
+                                                ref={mastodonAdditionalImageInputRef}
+                                                aria-label="Mastodon Additional Image Upload"
+                                                type="file"
+                                                accept="image/*"
+                                                onChange={(event) => void onMastodonAdditionalImageUpload(event.target.files?.[0])}
+                                            />
+                                            <small>Large images are resized before posting.</small>
+                                        </label>
+                                        {destinationForm.mastodonAdditionalImageDataURL ? (
+                                            <div className="form-actions">
+                                                <span>Uploaded additional image selected</span>
+                                                <button
+                                                    type="button"
+                                                    className="ghost-button"
+                                                    onClick={clearMastodonAdditionalImage}
+                                                >
+                                                    Clear Image
+                                                </button>
+                                            </div>
+                                        ) : null}
                                     </>
                                 ) : null}
 

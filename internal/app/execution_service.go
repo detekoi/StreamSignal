@@ -28,15 +28,19 @@ type blueskyDestinationConfig struct {
 	LiveNowDurationMinutes int    `json:"liveNowDurationMinutes"`
 	CardThumbnailURL       string `json:"cardThumbnailURL"`
 	CardThumbnailDataURL   string `json:"cardThumbnailDataURL"`
+	AdditionalImageURL     string `json:"additionalImageURL"`
+	AdditionalImageDataURL string `json:"additionalImageDataURL"`
 	EndStreamEnabled       bool   `json:"endStreamEnabled"`
 	EndStreamTemplate      string `json:"endStreamTemplate"`
 }
 
 type mastodonDestinationConfig struct {
-	CredentialKey     string `json:"credentialKey"`
-	InstanceURL       string `json:"instanceURL"`
-	EndStreamEnabled  bool   `json:"endStreamEnabled"`
-	EndStreamTemplate string `json:"endStreamTemplate"`
+	CredentialKey          string `json:"credentialKey"`
+	InstanceURL            string `json:"instanceURL"`
+	AdditionalImageURL     string `json:"additionalImageURL"`
+	AdditionalImageDataURL string `json:"additionalImageDataURL"`
+	EndStreamEnabled       bool   `json:"endStreamEnabled"`
+	EndStreamTemplate      string `json:"endStreamTemplate"`
 }
 
 const defaultBlueskyLiveNowDurationMinutes = 120
@@ -490,11 +494,13 @@ func (s *ExecutionService) publish(ctx context.Context, destination domain.Desti
 			return fmt.Errorf("missing Bluesky connection details")
 		}
 		return s.bluesky.PublishPost(ctx, config.AccountIdentifier, config.CredentialKey, content, domain.BlueskyPostMetadata{
-			StreamURL:        announcement.StreamURL,
-			StreamTitle:      announcement.StreamTitle,
-			Description:      announcement.Message,
-			ThumbnailURL:     config.CardThumbnailURL,
-			ThumbnailDataURL: config.CardThumbnailDataURL,
+			StreamURL:              announcement.StreamURL,
+			StreamTitle:            announcement.StreamTitle,
+			Description:            announcement.Message,
+			ThumbnailURL:           config.CardThumbnailURL,
+			ThumbnailDataURL:       config.CardThumbnailDataURL,
+			AdditionalImageURL:     config.AdditionalImageURL,
+			AdditionalImageDataURL: config.AdditionalImageDataURL,
 		})
 	case domain.PlatformMastodon:
 		var config mastodonDestinationConfig
@@ -504,7 +510,10 @@ func (s *ExecutionService) publish(ctx context.Context, destination domain.Desti
 		if config.CredentialKey == "" || config.InstanceURL == "" {
 			return fmt.Errorf("missing Mastodon connection details")
 		}
-		return s.mastodon.PublishPost(ctx, config.CredentialKey, config.InstanceURL, content)
+		return s.mastodon.PublishPost(ctx, config.CredentialKey, config.InstanceURL, content, domain.MastodonPostMetadata{
+			AdditionalImageURL:     config.AdditionalImageURL,
+			AdditionalImageDataURL: config.AdditionalImageDataURL,
+		})
 	default:
 		return fmt.Errorf("unsupported destination platform")
 	}

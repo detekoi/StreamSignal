@@ -46,17 +46,21 @@ type blueskyDestinationConfig struct {
 	LiveNowDurationMinutes int    `json:"liveNowDurationMinutes,omitempty"`
 	CardThumbnailURL       string `json:"cardThumbnailURL,omitempty"`
 	CardThumbnailDataURL   string `json:"cardThumbnailDataURL,omitempty"`
+	AdditionalImageURL     string `json:"additionalImageURL,omitempty"`
+	AdditionalImageDataURL string `json:"additionalImageDataURL,omitempty"`
 	EndStreamEnabled       bool   `json:"endStreamEnabled,omitempty"`
 	EndStreamTemplate      string `json:"endStreamTemplate,omitempty"`
 }
 
 type mastodonDestinationConfig struct {
-	Environment       string `json:"environment,omitempty"`
-	AccountIdentifier string `json:"accountIdentifier,omitempty"`
-	InstanceURL       string `json:"instanceURL,omitempty"`
-	CredentialKey     string `json:"credentialKey,omitempty"`
-	EndStreamEnabled  bool   `json:"endStreamEnabled,omitempty"`
-	EndStreamTemplate string `json:"endStreamTemplate,omitempty"`
+	Environment            string `json:"environment,omitempty"`
+	AccountIdentifier      string `json:"accountIdentifier,omitempty"`
+	InstanceURL            string `json:"instanceURL,omitempty"`
+	CredentialKey          string `json:"credentialKey,omitempty"`
+	AdditionalImageURL     string `json:"additionalImageURL,omitempty"`
+	AdditionalImageDataURL string `json:"additionalImageDataURL,omitempty"`
+	EndStreamEnabled       bool   `json:"endStreamEnabled,omitempty"`
+	EndStreamTemplate      string `json:"endStreamTemplate,omitempty"`
 }
 
 func NewDestinationRepository(inner ports.DestinationRepository, secrets ports.SecretStore) *DestinationRepository {

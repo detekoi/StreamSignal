@@ -339,7 +339,7 @@ describe('App', () => {
 
         expect(await screen.findByText('Main Discord')).toBeInTheDocument();
         expect(screen.getByText('discord · Production')).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'New Destination' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Reset Form' })).toBeInTheDocument();
     });
 
     it('treats a null destination list from Wails as empty', async () => {
@@ -561,6 +561,21 @@ describe('App', () => {
         await waitFor(() => {
             expect(screen.queryByRole('dialog', { name: 'Guided Credential Setup' })).not.toBeInTheDocument();
         });
+    });
+
+    it('shows Mastodon app setup details in guided setup', async () => {
+        render(<App />);
+
+        fireEvent.click(await screen.findByRole('button', { name: 'Destinations' }));
+        fireEvent.change(await screen.findByLabelText('Platform'), {
+            target: { value: 'mastodon' },
+        });
+        fireEvent.click(screen.getByRole('button', { name: 'Setup Help' }));
+
+        expect(await screen.findByText('Step 3: Set the redirect URI')).toBeInTheDocument();
+        expect(screen.getByText(/urn:ietf:wg:oauth:2.0:oob/)).toBeInTheDocument();
+        expect(screen.getByText(/write:statuses/)).toBeInTheDocument();
+        expect(screen.getByText(/read:accounts/)).toBeInTheDocument();
     });
 
     it('copies template variables from the destination helper', async () => {

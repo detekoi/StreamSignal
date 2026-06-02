@@ -104,16 +104,23 @@ type BlueskyLiveNowStatus struct {
 }
 
 type BlueskyPostMetadata struct {
-	StreamURL        string
-	StreamTitle      string
-	Description      string
-	ThumbnailURL     string
-	ThumbnailDataURL string
+	StreamURL              string
+	StreamTitle            string
+	Description            string
+	ThumbnailURL           string
+	ThumbnailDataURL       string
+	AdditionalImageURL     string
+	AdditionalImageDataURL string
 }
 
 type DiscordPostMetadata struct {
 	ThumbnailURL     string
 	ThumbnailDataURL string
+}
+
+type MastodonPostMetadata struct {
+	AdditionalImageURL     string
+	AdditionalImageDataURL string
 }
 
 type ActiveLiveNowSession struct {

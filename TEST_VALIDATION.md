@@ -80,8 +80,18 @@ Recent workflow work added or updated tests for:
 - explicit production/test destination targeting
 - Bluesky rich text link facets and external stream cards
 - Bluesky card thumbnail upload from both URL and local-image data URL
+- Bluesky additional image upload when no stream preview card is posted
 - Bluesky `Live Now` duration configuration, set, clear, and recovery behavior
-- defensive thumbnail validation for non-image, oversized, and non-HTTP inputs
+- defensive image validation for non-image, oversized, non-HTTP, and local/private-network URL inputs
+
+## Current Mastodon Coverage
+
+Recent workflow work added or updated tests for:
+
+- Mastodon status publishing
+- Mastodon additional image upload through media API before status publishing
+- Mastodon request failure handling
+- defensive image validation for oversized, non-image, non-HTTP, and local/private-network URL inputs
 
 ## Current Discord And End Stream Coverage
 

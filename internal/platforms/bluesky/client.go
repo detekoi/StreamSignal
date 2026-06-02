@@ -8,15 +8,16 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
 	"StreamSignal/internal/domain"
+	"StreamSignal/internal/platforms/netguard"
 )
 
 const defaultBaseURL = "https://bsky.social"
 const maxExternalThumbBytes = 1_000_000
+const maxAdditionalImageBytes = 1_000_000
 
 type Publisher struct {
 	baseURL string
@@ -73,7 +74,7 @@ type postRecordBody struct {
 	Text      string          `json:"text"`
 	CreatedAt string          `json:"createdAt"`
 	Facets    []richTextFacet `json:"facets,omitempty"`
-	Embed     *externalEmbed  `json:"embed,omitempty"`
+	Embed     any             `json:"embed,omitempty"`
 }
 
 type richTextFacet struct {
@@ -111,6 +112,16 @@ type externalEmbedCard struct {
 	Thumb       *blobRef `json:"thumb,omitempty"`
 }
 
+type imageEmbed struct {
+	Type   string            `json:"$type"`
+	Images []imageEmbedImage `json:"images"`
+}
+
+type imageEmbedImage struct {
+	Image *blobRef `json:"image"`
+	Alt   string   `json:"alt"`
+}
+
 func NewPublisher(baseURL string, client *http.Client) *Publisher {
 	if strings.TrimSpace(baseURL) == "" {
 		baseURL = defaultBaseURL
@@ -138,6 +149,11 @@ func (p *Publisher) PublishPost(ctx context.Context, accountIdentifier string, c
 	}
 	if err := p.applyPostLinkMetadata(ctx, session.AccessJWT, &postRecord, metadata); err != nil {
 		return err
+	}
+	if postRecord.Embed == nil {
+		if err := p.applyPostImageMetadata(ctx, session.AccessJWT, &postRecord, metadata); err != nil {
+			return err
+		}
 	}
 
 	record := createRecordRequest{
@@ -364,7 +380,7 @@ func (p *Publisher) applyPostLinkMetadata(ctx context.Context, accessJWT string,
 		Description: strings.TrimSpace(metadata.Description),
 	}
 	if thumbnailDataURL := strings.TrimSpace(metadata.ThumbnailDataURL); thumbnailDataURL != "" {
-		contentType, data, err := decodeImageDataURL(thumbnailDataURL)
+		contentType, data, err := decodeCardThumbnailDataURL(thumbnailDataURL)
 		if err != nil {
 			return err
 		}
@@ -388,37 +404,74 @@ func (p *Publisher) applyPostLinkMetadata(ctx context.Context, accessJWT string,
 	return nil
 }
 
-func decodeImageDataURL(dataURL string) (string, []byte, error) {
+func (p *Publisher) applyPostImageMetadata(ctx context.Context, accessJWT string, record *postRecordBody, metadata domain.BlueskyPostMetadata) error {
+	if additionalImageDataURL := strings.TrimSpace(metadata.AdditionalImageDataURL); additionalImageDataURL != "" {
+		contentType, data, err := decodeAdditionalImageDataURL(additionalImageDataURL)
+		if err != nil {
+			return err
+		}
+		image, err := p.uploadAdditionalImage(ctx, accessJWT, contentType, data)
+		if err != nil {
+			return err
+		}
+		record.Embed = &imageEmbed{
+			Type:   "app.bsky.embed.images",
+			Images: []imageEmbedImage{{Image: image, Alt: ""}},
+		}
+		return nil
+	}
+
+	if additionalImageURL := strings.TrimSpace(metadata.AdditionalImageURL); additionalImageURL != "" {
+		image, err := p.fetchAndUploadAdditionalImage(ctx, accessJWT, additionalImageURL)
+		if err != nil {
+			return err
+		}
+		record.Embed = &imageEmbed{
+			Type:   "app.bsky.embed.images",
+			Images: []imageEmbedImage{{Image: image, Alt: ""}},
+		}
+	}
+	return nil
+}
+
+func decodeCardThumbnailDataURL(dataURL string) (string, []byte, error) {
+	return decodeImageDataURL(dataURL, "card thumbnail", maxExternalThumbBytes, "1 MB")
+}
+
+func decodeAdditionalImageDataURL(dataURL string) (string, []byte, error) {
+	return decodeImageDataURL(dataURL, "additional image", maxAdditionalImageBytes, "1 MB")
+}
+
+func decodeImageDataURL(dataURL string, purpose string, maxBytes int, maxBytesLabel string) (string, []byte, error) {
 	const marker = ";base64,"
 	if !strings.HasPrefix(dataURL, "data:") {
-		return "", nil, fmt.Errorf("Bluesky card thumbnail upload must be a data URL")
+		return "", nil, fmt.Errorf("Bluesky %s upload must be a data URL", purpose)
 	}
 	index := strings.Index(dataURL, marker)
 	if index < 0 {
-		return "", nil, fmt.Errorf("Bluesky card thumbnail upload must be base64 encoded")
+		return "", nil, fmt.Errorf("Bluesky %s upload must be base64 encoded", purpose)
 	}
 	contentType := strings.TrimSpace(strings.TrimPrefix(dataURL[:index], "data:"))
 	if !strings.HasPrefix(contentType, "image/") {
-		return "", nil, fmt.Errorf("Bluesky card thumbnail must be an image")
+		return "", nil, fmt.Errorf("Bluesky %s must be an image", purpose)
 	}
 	encoded := dataURL[index+len(marker):]
-	if len(encoded) > base64.StdEncoding.EncodedLen(maxExternalThumbBytes)+4 {
-		return "", nil, fmt.Errorf("Bluesky card thumbnail must be 1 MB or smaller")
+	if len(encoded) > base64.StdEncoding.EncodedLen(maxBytes)+4 {
+		return "", nil, fmt.Errorf("Bluesky %s must be %s or smaller", purpose, maxBytesLabel)
 	}
 	data, err := base64.StdEncoding.DecodeString(encoded)
 	if err != nil {
-		return "", nil, fmt.Errorf("decode Bluesky card thumbnail upload: %w", err)
+		return "", nil, fmt.Errorf("decode Bluesky %s upload: %w", purpose, err)
 	}
-	if len(data) > maxExternalThumbBytes {
-		return "", nil, fmt.Errorf("Bluesky card thumbnail must be 1 MB or smaller")
+	if len(data) > maxBytes {
+		return "", nil, fmt.Errorf("Bluesky %s must be %s or smaller", purpose, maxBytesLabel)
 	}
 	return contentType, data, nil
 }
 
 func (p *Publisher) fetchAndUploadExternalThumb(ctx context.Context, accessJWT string, thumbnailURL string) (*blobRef, error) {
-	parsed, err := url.ParseRequestURI(thumbnailURL)
-	if err != nil || parsed == nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
-		return nil, fmt.Errorf("Bluesky card thumbnail URL must be a valid HTTP or HTTPS URL")
+	if err := netguard.ValidatePublicHTTPURL(ctx, thumbnailURL, "Bluesky card thumbnail"); err != nil {
+		return nil, err
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, thumbnailURL, nil)
 	if err != nil {
@@ -455,29 +508,75 @@ func (p *Publisher) fetchAndUploadExternalThumb(ctx context.Context, accessJWT s
 }
 
 func (p *Publisher) uploadExternalThumb(ctx context.Context, accessJWT string, contentType string, data []byte) (*blobRef, error) {
+	return p.uploadBlob(ctx, accessJWT, contentType, data, "card thumbnail")
+}
+
+func (p *Publisher) fetchAndUploadAdditionalImage(ctx context.Context, accessJWT string, imageURL string) (*blobRef, error) {
+	if err := netguard.ValidatePublicHTTPURL(ctx, imageURL, "Bluesky additional image"); err != nil {
+		return nil, err
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, imageURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("build Bluesky additional image request: %w", err)
+	}
+	response, err := p.client.Do(request)
+	if err != nil {
+		return nil, fmt.Errorf("fetch Bluesky additional image: %w", err)
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return nil, fmt.Errorf("fetch Bluesky additional image failed: %s%s", response.Status, readResponseSuffix(response.Body))
+	}
+
+	contentType := response.Header.Get("Content-Type")
+	if index := strings.Index(contentType, ";"); index >= 0 {
+		contentType = contentType[:index]
+	}
+	contentType = strings.TrimSpace(contentType)
+	if !strings.HasPrefix(contentType, "image/") {
+		return nil, fmt.Errorf("Bluesky additional image must be an image")
+	}
+
+	data, err := io.ReadAll(io.LimitReader(response.Body, maxAdditionalImageBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("read Bluesky additional image: %w", err)
+	}
+	if len(data) > maxAdditionalImageBytes {
+		return nil, fmt.Errorf("Bluesky additional image must be 1 MB or smaller")
+	}
+
+	return p.uploadAdditionalImage(ctx, accessJWT, contentType, data)
+}
+
+func (p *Publisher) uploadAdditionalImage(ctx context.Context, accessJWT string, contentType string, data []byte) (*blobRef, error) {
+	return p.uploadBlob(ctx, accessJWT, contentType, data, "additional image")
+}
+
+func (p *Publisher) uploadBlob(ctx context.Context, accessJWT string, contentType string, data []byte, purpose string) (*blobRef, error) {
 	upload, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+"/xrpc/com.atproto.repo.uploadBlob", bytes.NewReader(data))
 	if err != nil {
-		return nil, fmt.Errorf("build Bluesky card thumbnail upload request: %w", err)
+		return nil, fmt.Errorf("build Bluesky %s upload request: %w", purpose, err)
 	}
 	upload.Header.Set("Authorization", "Bearer "+accessJWT)
 	upload.Header.Set("Content-Type", contentType)
 
 	uploadResponse, err := p.client.Do(upload)
 	if err != nil {
-		return nil, fmt.Errorf("upload Bluesky card thumbnail: %w", err)
+		return nil, fmt.Errorf("upload Bluesky %s: %w", purpose, err)
 	}
 	defer uploadResponse.Body.Close()
 
 	if uploadResponse.StatusCode < 200 || uploadResponse.StatusCode >= 300 {
-		return nil, fmt.Errorf("upload Bluesky card thumbnail failed: %s%s", uploadResponse.Status, readResponseSuffix(uploadResponse.Body))
+		return nil, fmt.Errorf("upload Bluesky %s failed: %s%s", purpose, uploadResponse.Status, readResponseSuffix(uploadResponse.Body))
 	}
 
 	var result uploadBlobResponse
 	if err := json.NewDecoder(uploadResponse.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("decode Bluesky card thumbnail upload response: %w", err)
+		return nil, fmt.Errorf("decode Bluesky %s upload response: %w", purpose, err)
 	}
 	if result.Blob.Ref.Link == "" || result.Blob.MimeType == "" || result.Blob.Size <= 0 {
-		return nil, fmt.Errorf("Bluesky card thumbnail upload response was missing required fields")
+		return nil, fmt.Errorf("Bluesky %s upload response was missing required fields", purpose)
 	}
 	return &result.Blob, nil
 }

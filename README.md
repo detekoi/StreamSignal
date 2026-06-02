@@ -9,8 +9,10 @@ Current product status:
 - Discord, Bluesky, and Mastodon publishers are connected
 - Discord webhook posting has been manually validated, including selected-destination targeting, optional additional image embeds, and destination-level End Stream enablement
 - Bluesky posting has been validated with app-password auth, rich stream links, external cards, configurable `Live Now` duration, End Stream clearing, and manual recovery if the app closes mid-stream
+- Mastodon posting has been validated with manual access-token auth and optional additional image attachment
 - Preview is network-free and shows both Go Live messages and destination-level End Stream messages when available
 - runtime secrets are stored through Windows Credential Manager rather than directly in SQLite
+- remote image URL fetches for Bluesky and Mastodon are guarded against local/private-network targets
 - automated backend and frontend tests are part of the normal workflow
 
 The app is not yet being treated as fully validated MVP-complete. Core workflows are implemented, but we are still actively validating real-world behavior, usability, and human understanding of the UI before calling it release-ready.

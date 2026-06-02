@@ -81,16 +81,18 @@ type mastodonPublisherStub struct {
 		key         string
 		instanceURL string
 		content     string
+		metadata    domain.MastodonPostMetadata
 	}
 	err error
 }
 
-func (s *mastodonPublisherStub) PublishPost(_ context.Context, credentialKey string, instanceURL string, content string) error {
+func (s *mastodonPublisherStub) PublishPost(_ context.Context, credentialKey string, instanceURL string, content string, metadata domain.MastodonPostMetadata) error {
 	s.calls = append(s.calls, struct {
 		key         string
 		instanceURL string
 		content     string
-	}{credentialKey, instanceURL, content})
+		metadata    domain.MastodonPostMetadata
+	}{credentialKey, instanceURL, content, metadata})
 	return s.err
 }
 

@@ -22,8 +22,10 @@ This document records practical limits and constraints in StreamSignal's current
 - Bluesky `Live Now` support depends on Bluesky's current API and product behavior.
 - StreamSignal sets and clears the dedicated `Live Now` status record. It does not modify normal profile text as part of the live workflow.
 - StreamSignal can attach a stream-card thumbnail by fetching a direct HTTP(S) image URL or by uploading a local image selected in the destination form.
+- StreamSignal can also attach an additional Bluesky image when no stream preview card is posted. If both are configured, the stream preview card takes priority.
 - Uploaded local card images are resized in the frontend when needed, stored in local destination configuration as image data, and uploaded to Bluesky as a blob when posting.
-- Bluesky card thumbnails must fit Bluesky's current blob limits, so oversized images may be compressed or rejected.
+- Bluesky image URLs are fetched only after public-address validation; localhost, private network, link-local, unspecified, and multicast targets are rejected.
+- Bluesky images must fit Bluesky's current blob limits, so oversized images may be compressed or rejected.
 - StreamSignal does not currently fetch a Twitch profile image or stream thumbnail automatically. If Twitch metadata does not provide the expected preview, configure a card thumbnail manually.
 - If Bluesky changes the `Live Now` record contract or rollout behavior, the integration may need updates.
 
@@ -32,6 +34,9 @@ This document records practical limits and constraints in StreamSignal's current
 - StreamSignal currently uses manual instance URL plus access token setup.
 - Mastodon compatibility depends on the target instance supporting the expected API behavior.
 - Because Mastodon is federated, behavior can vary slightly by instance policy, version, or token permissions.
+- StreamSignal can attach one optional additional image by fetching a public HTTP(S) image URL or by uploading a local image selected in the destination form.
+- Mastodon image URLs are fetched only after public-address validation; localhost, private network, link-local, unspecified, and multicast targets are rejected.
+- Local Mastodon image uploads are resized in the frontend when needed, stored in local destination configuration as image data, uploaded to the instance media API, and attached to the status post.
 
 ## Cross-Platform Constraints
 

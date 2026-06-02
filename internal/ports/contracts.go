@@ -69,7 +69,7 @@ type BlueskyLiveNowManager interface {
 }
 
 type MastodonPublisher interface {
-	PublishPost(ctx context.Context, credentialKey string, instanceURL string, content string) error
+	PublishPost(ctx context.Context, credentialKey string, instanceURL string, content string, metadata domain.MastodonPostMetadata) error
 }
 
 type MastodonCredentialVerifier interface {

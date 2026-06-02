@@ -55,9 +55,13 @@ export interface DestinationFormState {
     blueskyLiveNowDurationMinutes: string;
     blueskyCardThumbnailURL: string;
     blueskyCardThumbnailDataURL: string;
+    blueskyAdditionalImageURL: string;
+    blueskyAdditionalImageDataURL: string;
     mastodonAccountIdentifier: string;
     mastodonInstanceURL: string;
     mastodonCredentialKey: string;
+    mastodonAdditionalImageURL: string;
+    mastodonAdditionalImageDataURL: string;
 }
 
 interface DiscordConfig {
@@ -78,6 +82,8 @@ interface BlueskyConfig {
     liveNowDurationMinutes?: number;
     cardThumbnailURL?: string;
     cardThumbnailDataURL?: string;
+    additionalImageURL?: string;
+    additionalImageDataURL?: string;
     environment?: DestinationEnvironment;
     endStreamEnabled?: boolean;
     endStreamTemplate?: string;
@@ -87,6 +93,8 @@ interface MastodonConfig {
     accountIdentifier?: string;
     instanceURL?: string;
     credentialKey?: string;
+    additionalImageURL?: string;
+    additionalImageDataURL?: string;
     environment?: DestinationEnvironment;
     endStreamEnabled?: boolean;
     endStreamTemplate?: string;
@@ -143,9 +151,13 @@ export function createEmptyDestinationForm(platform: DestinationPlatform = 'disc
         blueskyLiveNowDurationMinutes: '120',
         blueskyCardThumbnailURL: '',
         blueskyCardThumbnailDataURL: '',
+        blueskyAdditionalImageURL: '',
+        blueskyAdditionalImageDataURL: '',
         mastodonAccountIdentifier: '',
         mastodonInstanceURL: '',
         mastodonCredentialKey: '',
+        mastodonAdditionalImageURL: '',
+        mastodonAdditionalImageDataURL: '',
     };
 }
 
@@ -182,6 +194,8 @@ export function toDestinationFormState(destination: DestinationInput): Destinati
         next.blueskyLiveNowDurationMinutes = String(config.liveNowDurationMinutes ?? 120);
         next.blueskyCardThumbnailURL = config.cardThumbnailURL ?? '';
         next.blueskyCardThumbnailDataURL = config.cardThumbnailDataURL ?? '';
+        next.blueskyAdditionalImageURL = config.additionalImageURL ?? '';
+        next.blueskyAdditionalImageDataURL = config.additionalImageDataURL ?? '';
         next.endStreamEnabled = config.endStreamEnabled ?? false;
         next.endStreamTemplate = config.endStreamTemplate ?? base.endStreamTemplate;
     }
@@ -192,6 +206,8 @@ export function toDestinationFormState(destination: DestinationInput): Destinati
         next.mastodonAccountIdentifier = config.accountIdentifier ?? '';
         next.mastodonInstanceURL = config.instanceURL ?? '';
         next.mastodonCredentialKey = config.credentialKey ?? '';
+        next.mastodonAdditionalImageURL = config.additionalImageURL ?? '';
+        next.mastodonAdditionalImageDataURL = config.additionalImageDataURL ?? '';
         next.endStreamEnabled = config.endStreamEnabled ?? false;
         next.endStreamTemplate = config.endStreamTemplate ?? base.endStreamTemplate;
     }
@@ -224,6 +240,8 @@ export function toDestinationInput(form: DestinationFormState): DestinationInput
             liveNowDurationMinutes: Number.parseInt(form.blueskyLiveNowDurationMinutes, 10) || 120,
             cardThumbnailURL: form.blueskyCardThumbnailURL,
             cardThumbnailDataURL: form.blueskyCardThumbnailDataURL,
+            additionalImageURL: form.blueskyAdditionalImageURL,
+            additionalImageDataURL: form.blueskyAdditionalImageDataURL,
             endStreamEnabled: form.endStreamEnabled,
             endStreamTemplate: form.endStreamTemplate,
         });
@@ -235,6 +253,8 @@ export function toDestinationInput(form: DestinationFormState): DestinationInput
             accountIdentifier: form.mastodonAccountIdentifier,
             instanceURL: form.mastodonInstanceURL,
             credentialKey: form.mastodonCredentialKey,
+            additionalImageURL: form.mastodonAdditionalImageURL,
+            additionalImageDataURL: form.mastodonAdditionalImageDataURL,
             endStreamEnabled: form.endStreamEnabled,
             endStreamTemplate: form.endStreamTemplate,
         });
