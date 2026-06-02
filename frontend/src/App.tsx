@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import './App.css';
+import streamSignalIcon from './assets/images/streamsignal-icon.png';
 import {
     clearPendingLiveNowSession,
     deleteDestination,
@@ -883,6 +884,7 @@ function App() {
             <div className="app-frame">
                 <header className="panel app-header">
                     <div className="app-header-copy">
+                        <img src={streamSignalIcon} alt="" className="app-logo" aria-hidden="true" />
                         <h1>StreamSignal</h1>
                     </div>
                     <nav className="tab-bar" aria-label="Primary navigation">
