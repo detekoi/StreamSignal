@@ -62,18 +62,10 @@ func TestSettingsRepositoryPersistsRoundTrip(t *testing.T) {
 	repository := NewSettingsRepository(db)
 
 	expected := domain.AppSettings{
-		TestModeEnabled:              true,
-		TestDiscordWebhookKey:        "discord/test",
-		TestBlueskyAccountIdentifier: "don.test",
-		TestBlueskyCredentialKey:     "bluesky/test",
-		TestMastodonCredentialKey:    "mastodon/test",
-		TestMastodonInstanceURL:      "https://mastodon.test",
-		DefaultStreamURL:             "https://example.com/live",
-		DefaultHashtags:              "#vtuber #music",
-		DuplicateProtectionEnabled:   true,
-		DuplicateWindowMinutes:       15,
-		EndStreamPostEnabled:         true,
-		EndStreamTemplate:            "Thanks for hanging out!",
+		DefaultStreamURL:           "https://example.com/live",
+		DefaultHashtags:            "#vtuber #music",
+		DuplicateProtectionEnabled: true,
+		DuplicateWindowMinutes:     15,
 	}
 
 	if err := repository.Save(context.Background(), expected); err != nil {
@@ -147,7 +139,7 @@ func TestLiveNowSessionRepositoryRoundTrip(t *testing.T) {
 		DestinationID:     "bluesky-main",
 		DestinationName:   "Main Bluesky",
 		Platform:          string(domain.PlatformBluesky),
-		AccountIdentifier: "don.main",
+		AccountIdentifier: "streamer.main",
 		CredentialKey:     "bluesky/main",
 		StreamURL:         "https://example.com/live",
 		StreamTitle:       "Going Live",

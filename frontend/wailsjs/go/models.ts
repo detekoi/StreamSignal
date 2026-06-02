@@ -89,18 +89,10 @@ export namespace domain {
 		}
 	}
 	export class AppSettings {
-	    testModeEnabled: boolean;
-	    testDiscordWebhookKey: string;
-	    testBlueskyAccountIdentifier: string;
-	    testBlueskyCredentialKey: string;
-	    testMastodonCredentialKey: string;
-	    testMastodonInstanceURL: string;
 	    defaultStreamURL: string;
 	    defaultHashtags: string;
 	    duplicateProtectionEnabled: boolean;
 	    duplicateWindowMinutes: number;
-	    endStreamPostEnabled: boolean;
-	    endStreamTemplate: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new AppSettings(source);
@@ -108,18 +100,10 @@ export namespace domain {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.testModeEnabled = source["testModeEnabled"];
-	        this.testDiscordWebhookKey = source["testDiscordWebhookKey"];
-	        this.testBlueskyAccountIdentifier = source["testBlueskyAccountIdentifier"];
-	        this.testBlueskyCredentialKey = source["testBlueskyCredentialKey"];
-	        this.testMastodonCredentialKey = source["testMastodonCredentialKey"];
-	        this.testMastodonInstanceURL = source["testMastodonInstanceURL"];
 	        this.defaultStreamURL = source["defaultStreamURL"];
 	        this.defaultHashtags = source["defaultHashtags"];
 	        this.duplicateProtectionEnabled = source["duplicateProtectionEnabled"];
 	        this.duplicateWindowMinutes = source["duplicateWindowMinutes"];
-	        this.endStreamPostEnabled = source["endStreamPostEnabled"];
-	        this.endStreamTemplate = source["endStreamTemplate"];
 	    }
 	}
 	export class CredentialCheckResult {

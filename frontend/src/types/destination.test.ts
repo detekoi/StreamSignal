@@ -57,7 +57,7 @@ describe('destination mappings', () => {
         const form = createEmptyDestinationForm('bluesky');
         form.name = 'Main Bluesky';
         form.template = '{{stream_title}}';
-        form.blueskyAccountIdentifier = 'don.test';
+        form.blueskyAccountIdentifier = 'streamer.test';
         form.blueskyCredentialKey = 'bluesky/main';
         form.blueskyLiveStatusTemplate = 'LIVE {{stream_title}}';
         form.blueskyLiveNowDurationMinutes = '90';
@@ -72,7 +72,7 @@ describe('destination mappings', () => {
 
         expect(destination.platform).toBe('bluesky');
         expect(destination.configJSON).toBe(
-            '{"environment":"production","accountIdentifier":"don.test","credentialKey":"bluesky/main","liveStatusTemplate":"LIVE {{stream_title}}","liveNowDurationMinutes":90,"cardThumbnailURL":"https://example.com/avatar.png","cardThumbnailDataURL":"data:image/png;base64,abc","additionalImageURL":"https://example.com/additional.png","additionalImageDataURL":"data:image/png;base64,def","endStreamEnabled":true,"endStreamTemplate":"Bye {{stream_title}}"}',
+            '{"environment":"production","accountIdentifier":"streamer.test","credentialKey":"bluesky/main","liveStatusTemplate":"LIVE {{stream_title}}","liveNowDurationMinutes":90,"cardThumbnailURL":"https://example.com/avatar.png","cardThumbnailDataURL":"data:image/png;base64,abc","additionalImageURL":"https://example.com/additional.png","additionalImageDataURL":"data:image/png;base64,def","endStreamEnabled":true,"endStreamTemplate":"Bye {{stream_title}}"}',
         );
     });
 
@@ -83,14 +83,14 @@ describe('destination mappings', () => {
             name: 'Main Bluesky',
             enabled: true,
             template: '{{stream_title}}',
-            configJSON: '{"environment":"test","accountIdentifier":"don.test","credentialKey":"bluesky/main","liveStatusTemplate":"LIVE {{stream_title}}","liveNowDurationMinutes":45,"cardThumbnailURL":"https://example.com/avatar.png","cardThumbnailDataURL":"data:image/png;base64,abc","additionalImageURL":"https://example.com/additional.png","additionalImageDataURL":"data:image/png;base64,def","endStreamEnabled":true,"endStreamTemplate":"Bye {{stream_title}}"}',
+            configJSON: '{"environment":"test","accountIdentifier":"streamer.test","credentialKey":"bluesky/main","liveStatusTemplate":"LIVE {{stream_title}}","liveNowDurationMinutes":45,"cardThumbnailURL":"https://example.com/avatar.png","cardThumbnailDataURL":"data:image/png;base64,abc","additionalImageURL":"https://example.com/additional.png","additionalImageDataURL":"data:image/png;base64,def","endStreamEnabled":true,"endStreamTemplate":"Bye {{stream_title}}"}',
             createdAt: '',
             updatedAt: '',
         };
 
         const form = toDestinationFormState(destination);
 
-        expect(form.blueskyAccountIdentifier).toBe('don.test');
+        expect(form.blueskyAccountIdentifier).toBe('streamer.test');
         expect(form.blueskyCredentialKey).toBe('bluesky/main');
         expect(form.blueskyLiveStatusTemplate).toBe('LIVE {{stream_title}}');
         expect(form.blueskyLiveNowDurationMinutes).toBe('45');
@@ -107,7 +107,7 @@ describe('destination mappings', () => {
         const form = createEmptyDestinationForm('mastodon');
         form.name = 'Main Mastodon';
         form.template = '{{stream_title}}';
-        form.mastodonAccountIdentifier = '@don@example.social';
+        form.mastodonAccountIdentifier = '@streamer@example.social';
         form.mastodonInstanceURL = 'https://mastodon.social';
         form.mastodonCredentialKey = 'mastodon/main';
         form.mastodonAdditionalImageURL = 'https://example.com/mastodon.png';
@@ -119,7 +119,7 @@ describe('destination mappings', () => {
 
         expect(destination.platform).toBe('mastodon');
         expect(destination.configJSON).toBe(
-            '{"environment":"production","accountIdentifier":"@don@example.social","instanceURL":"https://mastodon.social","credentialKey":"mastodon/main","additionalImageURL":"https://example.com/mastodon.png","additionalImageDataURL":"data:image/png;base64,ghi","endStreamEnabled":true,"endStreamTemplate":"Bye {{stream_title}}"}',
+            '{"environment":"production","accountIdentifier":"@streamer@example.social","instanceURL":"https://mastodon.social","credentialKey":"mastodon/main","additionalImageURL":"https://example.com/mastodon.png","additionalImageDataURL":"data:image/png;base64,ghi","endStreamEnabled":true,"endStreamTemplate":"Bye {{stream_title}}"}',
         );
     });
 

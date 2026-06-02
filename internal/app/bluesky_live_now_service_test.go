@@ -42,8 +42,8 @@ func TestBlueskyLiveNowServiceSetValidatesAndNormalizes(t *testing.T) {
 	manager := &blueskyLiveNowManagerStub{}
 	service := NewBlueskyLiveNowService(manager)
 
-	err := service.Set(context.Background(), "don.test", "app-password", domain.BlueskyLiveNowStatus{
-		URL:             " https://twitch.tv/don ",
+	err := service.Set(context.Background(), "streamer.test", "app-password", domain.BlueskyLiveNowStatus{
+		URL:             " https://twitch.tv/example-streamer ",
 		Title:           " Stream Signal Live ",
 		Description:     " Launch stream ",
 		DurationMinutes: 90,
@@ -55,10 +55,10 @@ func TestBlueskyLiveNowServiceSetValidatesAndNormalizes(t *testing.T) {
 		t.Fatalf("expected one set call, got %d", len(manager.setCalls))
 	}
 	call := manager.setCalls[0]
-	if call.accountIdentifier != "don.test" || call.credentialKey != "app-password" {
+	if call.accountIdentifier != "streamer.test" || call.credentialKey != "app-password" {
 		t.Fatalf("unexpected credentials: %+v", call)
 	}
-	if call.status.URL != "https://twitch.tv/don" || call.status.Title != "Stream Signal Live" || call.status.Description != "Launch stream" || call.status.DurationMinutes != 90 {
+	if call.status.URL != "https://twitch.tv/example-streamer" || call.status.Title != "Stream Signal Live" || call.status.Description != "Launch stream" || call.status.DurationMinutes != 90 {
 		t.Fatalf("unexpected status normalization: %+v", call.status)
 	}
 }
@@ -66,7 +66,7 @@ func TestBlueskyLiveNowServiceSetValidatesAndNormalizes(t *testing.T) {
 func TestBlueskyLiveNowServiceSetRejectsInvalidURL(t *testing.T) {
 	service := NewBlueskyLiveNowService(&blueskyLiveNowManagerStub{})
 
-	err := service.Set(context.Background(), "don.test", "app-password", domain.BlueskyLiveNowStatus{
+	err := service.Set(context.Background(), "streamer.test", "app-password", domain.BlueskyLiveNowStatus{
 		URL:   "not-a-url",
 		Title: "Live",
 	})

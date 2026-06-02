@@ -25,7 +25,6 @@ func (s *logRepositoryStub) ListRecent(context.Context, int) ([]domain.LogEntry,
 func TestDiagnosticsServiceBuildIncludesSafeSummary(t *testing.T) {
 	settingsRepo := &settingsRepositoryStub{
 		item: domain.AppSettings{
-			TestModeEnabled:            true,
 			DuplicateProtectionEnabled: true,
 			DuplicateWindowMinutes:     10,
 		},
@@ -54,7 +53,7 @@ func TestDiagnosticsServiceBuildIncludesSafeSummary(t *testing.T) {
 				DestinationID:     "bluesky-main",
 				DestinationName:   "Main Bluesky",
 				Platform:          string(domain.PlatformBluesky),
-				AccountIdentifier: "don.main",
+				AccountIdentifier: "streamer.main",
 				CredentialKey:     "bluesky/main",
 				StreamURL:         "https://example.com/live",
 				StreamTitle:       "Going Live",
@@ -73,7 +72,6 @@ func TestDiagnosticsServiceBuildIncludesSafeSummary(t *testing.T) {
 
 	for _, expected := range []string{
 		"StreamSignal Diagnostics",
-		"End Stream Post Enabled: false",
 		"Destinations Configured: 1",
 		"Pending Live Now Sessions: 1",
 		"Sensitive values: redacted",

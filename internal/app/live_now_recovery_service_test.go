@@ -41,7 +41,7 @@ func TestLiveNowRecoveryServiceListsPendingSessions(t *testing.T) {
 			DestinationID:     "bluesky-main",
 			DestinationName:   "Main Bluesky",
 			Platform:          string(domain.PlatformBluesky),
-			AccountIdentifier: "don.main",
+			AccountIdentifier: "streamer.main",
 			CredentialKey:     "bluesky/main",
 			StreamURL:         "https://example.com/live",
 			StreamTitle:       "Going Live",
@@ -53,7 +53,7 @@ func TestLiveNowRecoveryServiceListsPendingSessions(t *testing.T) {
 			ID:         "bluesky-main",
 			Platform:   domain.PlatformBluesky,
 			Name:       "Main Bluesky",
-			ConfigJSON: `{"accountIdentifier":"don.main","credentialKey":"bluesky/main"}`,
+			ConfigJSON: `{"accountIdentifier":"streamer.main","credentialKey":"bluesky/main"}`,
 		}},
 	}
 	service := NewLiveNowRecoveryService(destinations, repository, &blueskyLiveNowManagerStub{})
@@ -83,7 +83,7 @@ func TestLiveNowRecoveryServicePrunesStalePendingSessions(t *testing.T) {
 			ID:         "bluesky-main",
 			Platform:   domain.PlatformBluesky,
 			Name:       "Main Bluesky",
-			ConfigJSON: `{"accountIdentifier":"don.main","credentialKey":"bluesky/main"}`,
+			ConfigJSON: `{"accountIdentifier":"streamer.main","credentialKey":"bluesky/main"}`,
 		}},
 	}
 	service := NewLiveNowRecoveryService(destinations, repository, &blueskyLiveNowManagerStub{})
@@ -106,7 +106,7 @@ func TestLiveNowRecoveryServiceClearsPendingSession(t *testing.T) {
 			DestinationID:     "bluesky-main",
 			DestinationName:   "Main Bluesky",
 			Platform:          string(domain.PlatformBluesky),
-			AccountIdentifier: "don.main",
+			AccountIdentifier: "streamer.main",
 			CredentialKey:     "bluesky/main",
 			StreamURL:         "https://example.com/live",
 			StreamTitle:       "Going Live",
@@ -119,7 +119,7 @@ func TestLiveNowRecoveryServiceClearsPendingSession(t *testing.T) {
 			ID:         "bluesky-main",
 			Platform:   domain.PlatformBluesky,
 			Name:       "Main Bluesky",
-			ConfigJSON: `{"accountIdentifier":"don.main","credentialKey":"bluesky/main"}`,
+			ConfigJSON: `{"accountIdentifier":"streamer.main","credentialKey":"bluesky/main"}`,
 		}},
 	}
 	service := NewLiveNowRecoveryService(destinations, repository, manager)
@@ -131,7 +131,7 @@ func TestLiveNowRecoveryServiceClearsPendingSession(t *testing.T) {
 	if result.State != domain.ExecutionStateSuccess {
 		t.Fatalf("unexpected result: %+v", result)
 	}
-	if len(manager.clearCalls) != 1 || manager.clearCalls[0].accountIdentifier != "don.main" {
+	if len(manager.clearCalls) != 1 || manager.clearCalls[0].accountIdentifier != "streamer.main" {
 		t.Fatalf("expected clear call, got %+v", manager.clearCalls)
 	}
 	if len(repository.deletes) != 1 || repository.deletes[0] != "bluesky-main" {
@@ -145,7 +145,7 @@ func TestLiveNowRecoveryServiceReturnsFailureResultWhenClearFails(t *testing.T) 
 			DestinationID:     "bluesky-main",
 			DestinationName:   "Main Bluesky",
 			Platform:          string(domain.PlatformBluesky),
-			AccountIdentifier: "don.main",
+			AccountIdentifier: "streamer.main",
 			CredentialKey:     "bluesky/main",
 			StartedAt:         time.Date(2026, 5, 31, 18, 0, 0, 0, time.UTC),
 		}},
@@ -156,7 +156,7 @@ func TestLiveNowRecoveryServiceReturnsFailureResultWhenClearFails(t *testing.T) 
 			ID:         "bluesky-main",
 			Platform:   domain.PlatformBluesky,
 			Name:       "Main Bluesky",
-			ConfigJSON: `{"accountIdentifier":"don.main","credentialKey":"bluesky/main"}`,
+			ConfigJSON: `{"accountIdentifier":"streamer.main","credentialKey":"bluesky/main"}`,
 		}},
 	}
 	service := NewLiveNowRecoveryService(destinations, repository, manager)

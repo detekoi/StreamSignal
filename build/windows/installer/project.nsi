@@ -1,7 +1,7 @@
 Unicode true
 
 ####
-## Please note: Template replacements don't work in this file. They are provided with default defines like
+## Please note: Template replacements do not work in this file. They are provided with default defines like
 ## mentioned underneath.
 ## If the keyword is not defined, "wails_tools.nsh" will populate them with the values from ProjectInfo.
 ## If they are defined here, "wails_tools.nsh" will not touch them. This allows to use this project.nsi manually

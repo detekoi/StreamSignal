@@ -37,6 +37,7 @@ import type { AppSettings } from './types/settings';
 type TabKey = 'home' | 'destinations' | 'settings' | 'logs';
 
 const STORED_SECRET_TOKEN = '[stored securely]';
+const SHOW_DEBUG_WORKFLOW_UI = import.meta.env.DEV || import.meta.env.MODE === 'debug';
 
 const initialAnnouncement: AnnouncementInput = {
     streamTitle: '',
@@ -49,21 +50,11 @@ const initialAnnouncement: AnnouncementInput = {
 const initialDestination = createEmptyDestinationForm();
 
 const defaultSettings: AppSettings = {
-    testModeEnabled: false,
-    testDiscordWebhookKey: '',
-    testBlueskyAccountIdentifier: '',
-    testBlueskyCredentialKey: '',
-    testMastodonCredentialKey: '',
-    testMastodonInstanceURL: '',
     defaultStreamURL: '',
     defaultHashtags: '',
     duplicateProtectionEnabled: true,
     duplicateWindowMinutes: 10,
-    endStreamPostEnabled: false,
-    endStreamTemplate: '',
 };
-
-type SecretSettingsCache = Pick<AppSettings, 'testDiscordWebhookKey' | 'testBlueskyCredentialKey' | 'testMastodonCredentialKey'>;
 
 type DestinationSecretCache = Pick<DestinationFormState, 'discordWebhookKey' | 'blueskyCredentialKey' | 'mastodonCredentialKey'>;
 
@@ -159,23 +150,6 @@ function resolveSecretInput(value: string, storedValue: string) {
         return storedValue;
     }
     return value;
-}
-
-function settingsSecretCacheFrom(settings: AppSettings): SecretSettingsCache {
-    return {
-        testDiscordWebhookKey: settings.testDiscordWebhookKey,
-        testBlueskyCredentialKey: settings.testBlueskyCredentialKey,
-        testMastodonCredentialKey: settings.testMastodonCredentialKey,
-    };
-}
-
-function toMaskedSettings(settings: AppSettings): AppSettings {
-    return {
-        ...settings,
-        testDiscordWebhookKey: maskSecretValue(settings.testDiscordWebhookKey),
-        testBlueskyCredentialKey: maskSecretValue(settings.testBlueskyCredentialKey),
-        testMastodonCredentialKey: maskSecretValue(settings.testMastodonCredentialKey),
-    };
 }
 
 function destinationSecretCacheFrom(form: DestinationFormState): DestinationSecretCache {
@@ -405,11 +379,6 @@ function App() {
     const [showGuidedSetup, setShowGuidedSetup] = useState(false);
 
     const [settings, setSettings] = useState<AppSettings>(defaultSettings);
-    const [settingsSecrets, setSettingsSecrets] = useState<SecretSettingsCache>({
-        testDiscordWebhookKey: '',
-        testBlueskyCredentialKey: '',
-        testMastodonCredentialKey: '',
-    });
     const [settingsStatus, setSettingsStatus] = useState<string | null>(null);
     const [settingsError, setSettingsError] = useState<string | null>(null);
     const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -424,7 +393,9 @@ function App() {
     useEffect(() => {
         void refreshDestinations();
         void refreshSettings();
-        void refreshLogs();
+        if (SHOW_DEBUG_WORKFLOW_UI) {
+            void refreshLogs();
+        }
         void refreshPendingLiveNowSessions();
     }, []);
 
@@ -452,8 +423,7 @@ function App() {
     async function refreshSettings() {
         try {
             const current = await getSettings();
-            setSettingsSecrets(settingsSecretCacheFrom(current));
-            setSettings(toMaskedSettings(current));
+            setSettings(current);
             setAnnouncement((existing) => applyAnnouncementDefaults(existing, current));
         } catch (err: unknown) {
             const message = errorMessage(err, 'Unable to load settings.');
@@ -673,15 +643,8 @@ function App() {
         setSettingsStatus(null);
 
         try {
-            const resolvedSettings: AppSettings = {
-                ...settings,
-                testDiscordWebhookKey: resolveSecretInput(settings.testDiscordWebhookKey, settingsSecrets.testDiscordWebhookKey),
-                testBlueskyCredentialKey: resolveSecretInput(settings.testBlueskyCredentialKey, settingsSecrets.testBlueskyCredentialKey),
-                testMastodonCredentialKey: resolveSecretInput(settings.testMastodonCredentialKey, settingsSecrets.testMastodonCredentialKey),
-            };
-            const saved = await saveSettings(resolvedSettings);
-            setSettingsSecrets(settingsSecretCacheFrom(saved));
-            setSettings(toMaskedSettings(saved));
+            const saved = await saveSettings(settings);
+            setSettings(saved);
             setAnnouncement((existing) => applyAnnouncementDefaults(existing, saved));
             setSettingsStatus('Settings saved.');
         } catch (err: unknown) {
@@ -944,13 +907,15 @@ function App() {
                             >
                                 Settings
                             </button>
-                            <button
-                                aria-label="Logs"
-                                className={selectedTab === 'logs' ? 'tab-button active' : 'tab-button'}
-                                onClick={() => setSelectedTab('logs')}
-                            >
-                                Logs
-                            </button>
+                            {SHOW_DEBUG_WORKFLOW_UI ? (
+                                <button
+                                    aria-label="Logs"
+                                    className={selectedTab === 'logs' ? 'tab-button active' : 'tab-button'}
+                                    onClick={() => setSelectedTab('logs')}
+                                >
+                                    Logs
+                                </button>
+                            ) : null}
                     </nav>
                 </header>
 
@@ -1123,6 +1088,37 @@ function App() {
                                                 {executionLoading === 'end_stream' ? 'Ending Stream...' : 'End Stream'}
                                             </button>
                                         </div>
+
+                                        {!SHOW_DEBUG_WORKFLOW_UI ? (
+                                            <section className="release-workflow-status" aria-live="polite">
+                                                {executionError ? <p className="error-banner">{executionError}</p> : null}
+                                                {executionStatusMessage(executionSummary) ? (
+                                                    <div className={executionSummary?.status === 'PARTIAL' ? 'error-banner' : 'warning-banner'}>
+                                                        <p>{executionStatusMessage(executionSummary)}</p>
+                                                    </div>
+                                                ) : null}
+                                                {pendingGoLiveConfirmation ? (
+                                                    <div className="warning-banner">
+                                                        <p>{executionSummary?.duplicateWarningMessage}</p>
+                                                        <div className="form-actions">
+                                                            <button
+                                                                type="button"
+                                                                className="primary-button"
+                                                                onClick={() => void onConfirmGoLive()}
+                                                                disabled={executionLoading !== null}
+                                                            >
+                                                                {executionLoading === 'go_live' ? 'Confirming...' : 'Confirm Go Live'}
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ) : null}
+                                                {executionSummary && !pendingGoLiveConfirmation && !executionStatusMessage(executionSummary) ? (
+                                                    <p className="success-banner">
+                                                        {executionSummary.mode === 'end_stream' ? 'End Stream completed.' : 'Go Live completed.'}
+                                                    </p>
+                                                ) : null}
+                                            </section>
+                                        ) : null}
                                     </form>
                                 </article>
 
@@ -1186,6 +1182,7 @@ function App() {
                                     )}
                                 </article>
 
+                                {SHOW_DEBUG_WORKFLOW_UI ? (
                                 <article className="panel">
                                     <div className="panel-header">
                                         <h2>Execution Results</h2>
@@ -1269,6 +1266,7 @@ function App() {
                                 </>
                             )}
                                 </article>
+                                ) : null}
                             </>
                         ) : null}
 
@@ -1729,7 +1727,7 @@ function App() {
                                                 aria-label="Account Identifier"
                                                 value={destinationForm.mastodonAccountIdentifier}
                                                 onChange={(event) => updateDestination('mastodonAccountIdentifier', event.target.value)}
-                                                placeholder="@don@example.social"
+                                                placeholder="@streamer@example.social"
                                             />
                                         </label>
                                         <label className="field">
@@ -1971,7 +1969,7 @@ function App() {
                             </>
                         ) : null}
 
-                        {selectedTab === 'logs' ? (
+                        {SHOW_DEBUG_WORKFLOW_UI && selectedTab === 'logs' ? (
                             <article className="panel panel-wide">
                                 <div className="panel-header">
                                     <div>

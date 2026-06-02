@@ -119,19 +119,11 @@ func (r *DestinationRepository) Delete(ctx context.Context, id string) error {
 }
 
 func (r *SettingsRepository) Load(ctx context.Context) (domain.AppSettings, error) {
-	settings, err := r.inner.Load(ctx)
-	if err != nil {
-		return domain.AppSettings{}, err
-	}
-	return r.hydrateSettings(ctx, settings)
+	return r.inner.Load(ctx)
 }
 
 func (r *SettingsRepository) Save(ctx context.Context, settings domain.AppSettings) error {
-	item, err := r.dehydrateSettings(ctx, settings)
-	if err != nil {
-		return err
-	}
-	return r.inner.Save(ctx, item)
+	return r.inner.Save(ctx, settings)
 }
 
 func (r *LiveNowSessionRepository) Upsert(ctx context.Context, session domain.ActiveLiveNowSession) error {
@@ -298,58 +290,6 @@ func (r *DestinationRepository) dehydrateDestination(ctx context.Context, destin
 	return item, nil
 }
 
-func (r *SettingsRepository) hydrateSettings(ctx context.Context, settings domain.AppSettings) (domain.AppSettings, error) {
-	item := settings
-
-	if hasLegacySettingsSecrets(item) {
-		migrated, err := r.dehydrateSettings(ctx, item)
-		if err != nil {
-			return domain.AppSettings{}, err
-		}
-		if err := r.inner.Save(ctx, migrated); err != nil {
-			return domain.AppSettings{}, err
-		}
-	}
-
-	if value, err := r.resolveSecretValue(ctx, item.TestDiscordWebhookKey); err == nil {
-		item.TestDiscordWebhookKey = value
-	} else if isSecretRef(item.TestDiscordWebhookKey) {
-		item.TestDiscordWebhookKey = ""
-	}
-	if value, err := r.resolveSecretValue(ctx, item.TestBlueskyCredentialKey); err == nil {
-		item.TestBlueskyCredentialKey = value
-	} else if isSecretRef(item.TestBlueskyCredentialKey) {
-		item.TestBlueskyCredentialKey = ""
-	}
-	if value, err := r.resolveSecretValue(ctx, item.TestMastodonCredentialKey); err == nil {
-		item.TestMastodonCredentialKey = value
-	} else if isSecretRef(item.TestMastodonCredentialKey) {
-		item.TestMastodonCredentialKey = ""
-	}
-
-	return item, nil
-}
-
-func (r *SettingsRepository) dehydrateSettings(ctx context.Context, settings domain.AppSettings) (domain.AppSettings, error) {
-	item := settings
-	var err error
-
-	item.TestDiscordWebhookKey, err = r.persistSecretValue(ctx, settingsSecretKey("test-discord-webhook"), item.TestDiscordWebhookKey)
-	if err != nil {
-		return domain.AppSettings{}, err
-	}
-	item.TestBlueskyCredentialKey, err = r.persistSecretValue(ctx, settingsSecretKey("test-bluesky-credential"), item.TestBlueskyCredentialKey)
-	if err != nil {
-		return domain.AppSettings{}, err
-	}
-	item.TestMastodonCredentialKey, err = r.persistSecretValue(ctx, settingsSecretKey("test-mastodon-credential"), item.TestMastodonCredentialKey)
-	if err != nil {
-		return domain.AppSettings{}, err
-	}
-
-	return item, nil
-}
-
 func (r *DestinationRepository) resolveSecretValue(ctx context.Context, value string) (string, error) {
 	if !isSecretRef(value) {
 		return value, nil
@@ -357,18 +297,7 @@ func (r *DestinationRepository) resolveSecretValue(ctx context.Context, value st
 	return r.secrets.Get(ctx, fromSecretRef(value))
 }
 
-func (r *SettingsRepository) resolveSecretValue(ctx context.Context, value string) (string, error) {
-	if !isSecretRef(value) {
-		return value, nil
-	}
-	return r.secrets.Get(ctx, fromSecretRef(value))
-}
-
 func (r *DestinationRepository) persistSecretValue(ctx context.Context, key string, value string) (string, error) {
-	return persistSecretValue(ctx, r.secrets, key, value)
-}
-
-func (r *SettingsRepository) persistSecretValue(ctx context.Context, key string, value string) (string, error) {
 	return persistSecretValue(ctx, r.secrets, key, value)
 }
 
@@ -411,16 +340,6 @@ func destinationSecretKey(destinationID, field string) string {
 	return fmt.Sprintf("streamsignal/destinations/%s/%s", destinationID, field)
 }
 
-func settingsSecretKey(field string) string {
-	return fmt.Sprintf("streamsignal/settings/%s", field)
-}
-
 func liveNowSecretKey(destinationID string) string {
 	return fmt.Sprintf("streamsignal/live-now/%s/credential", destinationID)
-}
-
-func hasLegacySettingsSecrets(settings domain.AppSettings) bool {
-	return (strings.TrimSpace(settings.TestDiscordWebhookKey) != "" && !isSecretRef(settings.TestDiscordWebhookKey)) ||
-		(strings.TrimSpace(settings.TestBlueskyCredentialKey) != "" && !isSecretRef(settings.TestBlueskyCredentialKey)) ||
-		(strings.TrimSpace(settings.TestMastodonCredentialKey) != "" && !isSecretRef(settings.TestMastodonCredentialKey))
 }

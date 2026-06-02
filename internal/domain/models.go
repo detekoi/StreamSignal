@@ -32,34 +32,18 @@ type Destination struct {
 }
 
 type AppSettings struct {
-	TestModeEnabled              bool   `json:"testModeEnabled"`
-	TestDiscordWebhookKey        string `json:"testDiscordWebhookKey"`
-	TestBlueskyAccountIdentifier string `json:"testBlueskyAccountIdentifier"`
-	TestBlueskyCredentialKey     string `json:"testBlueskyCredentialKey"`
-	TestMastodonCredentialKey    string `json:"testMastodonCredentialKey"`
-	TestMastodonInstanceURL      string `json:"testMastodonInstanceURL"`
-	DefaultStreamURL             string `json:"defaultStreamURL"`
-	DefaultHashtags              string `json:"defaultHashtags"`
-	DuplicateProtectionEnabled   bool   `json:"duplicateProtectionEnabled"`
-	DuplicateWindowMinutes       int    `json:"duplicateWindowMinutes"`
-	EndStreamPostEnabled         bool   `json:"endStreamPostEnabled"`
-	EndStreamTemplate            string `json:"endStreamTemplate"`
+	DefaultStreamURL           string `json:"defaultStreamURL"`
+	DefaultHashtags            string `json:"defaultHashtags"`
+	DuplicateProtectionEnabled bool   `json:"duplicateProtectionEnabled"`
+	DuplicateWindowMinutes     int    `json:"duplicateWindowMinutes"`
 }
 
 func DefaultAppSettings() AppSettings {
 	return AppSettings{
-		TestModeEnabled:              false,
-		TestDiscordWebhookKey:        "",
-		TestBlueskyAccountIdentifier: "",
-		TestBlueskyCredentialKey:     "",
-		TestMastodonCredentialKey:    "",
-		TestMastodonInstanceURL:      "",
-		DefaultStreamURL:             "",
-		DefaultHashtags:              "",
-		DuplicateProtectionEnabled:   true,
-		DuplicateWindowMinutes:       10,
-		EndStreamPostEnabled:         false,
-		EndStreamTemplate:            "",
+		DefaultStreamURL:           "",
+		DefaultHashtags:            "",
+		DuplicateProtectionEnabled: true,
+		DuplicateWindowMinutes:     10,
 	}
 }
 

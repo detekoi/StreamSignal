@@ -437,6 +437,11 @@ body {
     align-items: center;
 }
 
+.release-workflow-status {
+    display: grid;
+    gap: 12px;
+}
+
 .action-cluster-main,
 .workflow-actions {
     flex-wrap: wrap;

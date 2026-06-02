@@ -80,18 +80,10 @@ function deferred<T>() {
 describe('App', () => {
     beforeEach(() => {
         mockedGetSettings.mockResolvedValue({
-            testModeEnabled: false,
-            testDiscordWebhookKey: '',
-            testBlueskyAccountIdentifier: '',
-            testBlueskyCredentialKey: '',
-            testMastodonCredentialKey: '',
-            testMastodonInstanceURL: '',
             defaultStreamURL: '',
             defaultHashtags: '',
             duplicateProtectionEnabled: true,
             duplicateWindowMinutes: 10,
-            endStreamPostEnabled: false,
-            endStreamTemplate: '',
         });
         mockedGetLogs.mockResolvedValue([]);
         mockedGetDiagnostics.mockResolvedValue('StreamSignal Diagnostics');
@@ -268,18 +260,10 @@ describe('App', () => {
 
     it('loads saved announcement defaults into empty Home fields', async () => {
         mockedGetSettings.mockResolvedValue({
-            testModeEnabled: false,
-            testDiscordWebhookKey: '',
-            testBlueskyAccountIdentifier: '',
-            testBlueskyCredentialKey: '',
-            testMastodonCredentialKey: '',
-            testMastodonInstanceURL: '',
             defaultStreamURL: 'https://example.com/live',
             defaultHashtags: '#vtuber',
             duplicateProtectionEnabled: true,
             duplicateWindowMinutes: 10,
-            endStreamPostEnabled: false,
-            endStreamTemplate: '',
         });
 
         render(<App />);
@@ -299,18 +283,10 @@ describe('App', () => {
         });
 
         pendingSettings.resolve({
-            testModeEnabled: false,
-            testDiscordWebhookKey: '',
-            testBlueskyAccountIdentifier: '',
-            testBlueskyCredentialKey: '',
-            testMastodonCredentialKey: '',
-            testMastodonInstanceURL: '',
             defaultStreamURL: 'https://default.example/live',
             defaultHashtags: '#default',
             duplicateProtectionEnabled: true,
             duplicateWindowMinutes: 10,
-            endStreamPostEnabled: false,
-            endStreamTemplate: '',
         });
 
         await waitFor(() => {
@@ -371,7 +347,7 @@ describe('App', () => {
                 name: 'Main Bluesky',
                 enabled: true,
                 template: '{{stream_title}}',
-                configJSON: '{"accountIdentifier":"don.test","credentialKey":"bluesky/main"}',
+                configJSON: '{"accountIdentifier":"streamer.test","credentialKey":"bluesky/main"}',
                 createdAt: '',
                 updatedAt: '',
             },
@@ -414,7 +390,7 @@ describe('App', () => {
                 name: 'Main Bluesky',
                 enabled: true,
                 template: '{{stream_title}}',
-                configJSON: '{"accountIdentifier":"don.test","credentialKey":"bluesky/main"}',
+                configJSON: '{"accountIdentifier":"streamer.test","credentialKey":"bluesky/main"}',
                 createdAt: '',
                 updatedAt: '',
             },
@@ -623,18 +599,10 @@ describe('App', () => {
 
     it('loads and saves settings from the Settings tab', async () => {
         mockedGetSettings.mockResolvedValue({
-            testModeEnabled: false,
-            testDiscordWebhookKey: '',
-            testBlueskyAccountIdentifier: '',
-            testBlueskyCredentialKey: '',
-            testMastodonCredentialKey: '',
-            testMastodonInstanceURL: '',
             defaultStreamURL: 'https://example.com/live',
             defaultHashtags: '#vtuber',
             duplicateProtectionEnabled: true,
             duplicateWindowMinutes: 10,
-            endStreamPostEnabled: false,
-            endStreamTemplate: '',
         });
 
         render(<App />);
@@ -650,61 +618,14 @@ describe('App', () => {
 
         await waitFor(() => {
             expect(mockedSaveSettings).toHaveBeenCalledWith({
-                testModeEnabled: false,
-                testDiscordWebhookKey: '',
-                testBlueskyAccountIdentifier: '',
-                testBlueskyCredentialKey: '',
-                testMastodonCredentialKey: '',
-                testMastodonInstanceURL: '',
                 defaultStreamURL: 'https://example.com/live',
                 defaultHashtags: '#vtuber',
                 duplicateProtectionEnabled: true,
                 duplicateWindowMinutes: 15,
-                endStreamPostEnabled: false,
-                endStreamTemplate: '',
             });
         });
 
         expect(await screen.findByText('Settings saved.')).toBeInTheDocument();
-    });
-
-    it('preserves hidden legacy test settings when settings are saved', async () => {
-        mockedGetSettings.mockResolvedValue({
-            testModeEnabled: true,
-            testDiscordWebhookKey: 'discord/test',
-            testBlueskyAccountIdentifier: 'don.test',
-            testBlueskyCredentialKey: 'bluesky/test',
-            testMastodonCredentialKey: 'mastodon/test',
-            testMastodonInstanceURL: 'https://mastodon.test',
-            defaultStreamURL: 'https://example.com/live',
-            defaultHashtags: '#vtuber',
-            duplicateProtectionEnabled: true,
-            duplicateWindowMinutes: 10,
-            endStreamPostEnabled: false,
-            endStreamTemplate: '',
-        });
-
-        render(<App />);
-
-        fireEvent.click(await screen.findByRole('button', { name: 'Settings' }));
-        fireEvent.click(await screen.findByRole('button', { name: 'Save Settings' }));
-
-        await waitFor(() => {
-            expect(mockedSaveSettings).toHaveBeenCalledWith({
-                testModeEnabled: true,
-                testDiscordWebhookKey: 'discord/test',
-                testBlueskyAccountIdentifier: 'don.test',
-                testBlueskyCredentialKey: 'bluesky/test',
-                testMastodonCredentialKey: 'mastodon/test',
-                testMastodonInstanceURL: 'https://mastodon.test',
-                defaultStreamURL: 'https://example.com/live',
-                defaultHashtags: '#vtuber',
-                duplicateProtectionEnabled: true,
-                duplicateWindowMinutes: 10,
-                endStreamPostEnabled: false,
-                endStreamTemplate: '',
-            });
-        });
     });
 
     it('preserves stored destination secrets when saving a masked destination', async () => {
@@ -747,7 +668,7 @@ describe('App', () => {
                 destinationID: 'bluesky-main',
                 destinationName: 'Main Bluesky',
                 platform: 'bluesky',
-                accountIdentifier: 'don.main',
+                accountIdentifier: 'streamer.main',
                 credentialKey: 'bluesky/main',
                 streamURL: 'https://example.com/live',
                 streamTitle: 'Going Live',
@@ -777,7 +698,7 @@ describe('App', () => {
                 destinationID: 'bluesky-main',
                 destinationName: 'Main Bluesky',
                 platform: 'bluesky',
-                accountIdentifier: 'don.main',
+                accountIdentifier: 'streamer.main',
                 credentialKey: 'bluesky/main',
                 streamURL: 'https://example.com/live',
                 streamTitle: 'Going Live',
@@ -800,7 +721,7 @@ describe('App', () => {
                 destinationID: 'bluesky-main',
                 destinationName: 'Main Bluesky',
                 platform: 'bluesky',
-                accountIdentifier: 'don.main',
+                accountIdentifier: 'streamer.main',
                 credentialKey: 'bluesky/main',
                 streamURL: 'https://example.com/live',
                 streamTitle: 'Going Live',

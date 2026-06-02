@@ -168,7 +168,7 @@ func TestExecutionServiceGoLiveIsolatesDestinationFailures(t *testing.T) {
 			Name:       "Main Bluesky",
 			Enabled:    true,
 			Template:   "{{stream_title}}",
-			ConfigJSON: `{"accountIdentifier":"don.main","credentialKey":"bluesky/main"}`,
+			ConfigJSON: `{"accountIdentifier":"streamer.main","credentialKey":"bluesky/main"}`,
 		},
 	}
 	settingsRepo := &settingsRepositoryStub{item: domain.DefaultAppSettings()}
@@ -411,7 +411,7 @@ func TestExecutionServiceGoLiveUsesSelectedDestinationTargets(t *testing.T) {
 			Name:       "Main Bluesky",
 			Enabled:    true,
 			Template:   "{{stream_title}}",
-			ConfigJSON: `{"accountIdentifier":"don.main","credentialKey":"bluesky/main","cardThumbnailURL":"https://example.com/avatar.png","liveNowDurationMinutes":90}`,
+			ConfigJSON: `{"accountIdentifier":"streamer.main","credentialKey":"bluesky/main","cardThumbnailURL":"https://example.com/avatar.png","liveNowDurationMinutes":90}`,
 		},
 		{
 			ID:         "mastodon-main",
@@ -444,19 +444,19 @@ func TestExecutionServiceGoLiveUsesSelectedDestinationTargets(t *testing.T) {
 	if discord.calls[0].metadata.ThumbnailURL != "https://example.com/card.png" {
 		t.Fatalf("expected discord post metadata, got %+v", discord.calls[0].metadata)
 	}
-	if len(bluesky.calls) != 1 || bluesky.calls[0].identifier != "don.main" || bluesky.calls[0].key != "bluesky/main" {
+	if len(bluesky.calls) != 1 || bluesky.calls[0].identifier != "streamer.main" || bluesky.calls[0].key != "bluesky/main" {
 		t.Fatalf("expected selected bluesky key, got %+v", bluesky.calls)
 	}
 	if bluesky.calls[0].metadata.StreamURL != "https://example.com/live" || bluesky.calls[0].metadata.StreamTitle != "Going Live" || bluesky.calls[0].metadata.ThumbnailURL != "https://example.com/avatar.png" {
 		t.Fatalf("expected bluesky post metadata, got %+v", bluesky.calls[0].metadata)
 	}
-	if len(bluesky.liveNowSetCalls) != 1 || bluesky.liveNowSetCalls[0].identifier != "don.main" || bluesky.liveNowSetCalls[0].key != "bluesky/main" {
+	if len(bluesky.liveNowSetCalls) != 1 || bluesky.liveNowSetCalls[0].identifier != "streamer.main" || bluesky.liveNowSetCalls[0].key != "bluesky/main" {
 		t.Fatalf("expected bluesky live now to use selected key, got %+v", bluesky.liveNowSetCalls)
 	}
 	if bluesky.liveNowSetCalls[0].status.DurationMinutes != 90 {
 		t.Fatalf("expected configured live now duration, got %+v", bluesky.liveNowSetCalls[0].status)
 	}
-	if len(sessions.upserts) != 1 || sessions.upserts[0].AccountIdentifier != "don.main" || sessions.upserts[0].CredentialKey != "bluesky/main" {
+	if len(sessions.upserts) != 1 || sessions.upserts[0].AccountIdentifier != "streamer.main" || sessions.upserts[0].CredentialKey != "bluesky/main" {
 		t.Fatalf("expected tracked session to use selected destination, got %+v", sessions.upserts)
 	}
 	if len(mastodon.calls) != 1 || mastodon.calls[0].key != "mastodon/main" || mastodon.calls[0].instanceURL != "https://mastodon.social" {
@@ -495,7 +495,7 @@ func TestExecutionServiceGoLiveReturnsFailureWhenBlueskyLiveNowUpdateFailsAfterP
 		Name:       "Main Bluesky",
 		Enabled:    true,
 		Template:   "{{stream_title}}",
-		ConfigJSON: `{"accountIdentifier":"don.main","credentialKey":"bluesky/main"}`,
+		ConfigJSON: `{"accountIdentifier":"streamer.main","credentialKey":"bluesky/main"}`,
 	}
 	settingsRepo := &settingsRepositoryStub{item: domain.DefaultAppSettings()}
 	history := &postHistoryRepositoryStub{recordsByDestination: map[string][]ports.PostHistoryRecord{}}
@@ -535,7 +535,7 @@ func TestExecutionServiceEndStreamClearsBlueskyLiveNow(t *testing.T) {
 			Name:       "Main Bluesky",
 			Enabled:    true,
 			Template:   "{{stream_title}}",
-			ConfigJSON: `{"accountIdentifier":"don.main","credentialKey":"bluesky/main"}`,
+			ConfigJSON: `{"accountIdentifier":"streamer.main","credentialKey":"bluesky/main"}`,
 		},
 		{
 			ID:         "discord-main",
@@ -553,7 +553,7 @@ func TestExecutionServiceEndStreamClearsBlueskyLiveNow(t *testing.T) {
 			DestinationID:     "bluesky-main",
 			DestinationName:   "Main Bluesky",
 			Platform:          string(domain.PlatformBluesky),
-			AccountIdentifier: "don.main",
+			AccountIdentifier: "streamer.main",
 			CredentialKey:     "bluesky/main",
 			StreamURL:         "https://example.com/live",
 			StreamTitle:       "Going Live",
@@ -566,7 +566,7 @@ func TestExecutionServiceEndStreamClearsBlueskyLiveNow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("end stream: %v", err)
 	}
-	if len(bluesky.liveNowClearCalls) != 1 || bluesky.liveNowClearCalls[0].identifier != "don.main" || bluesky.liveNowClearCalls[0].key != "bluesky/main" {
+	if len(bluesky.liveNowClearCalls) != 1 || bluesky.liveNowClearCalls[0].identifier != "streamer.main" || bluesky.liveNowClearCalls[0].key != "bluesky/main" {
 		t.Fatalf("expected live now clear call, got %+v", bluesky.liveNowClearCalls)
 	}
 	if len(summary.Results) != 3 || summary.Results[0].State != domain.ExecutionStateSuccess || summary.SkippedCount != 2 {
@@ -586,7 +586,7 @@ func TestExecutionServiceEndStreamOptionallyPublishesConfiguredPosts(t *testing.
 			Name:       "Main Bluesky",
 			Enabled:    true,
 			Template:   "{{stream_title}}",
-			ConfigJSON: `{"accountIdentifier":"don.main","credentialKey":"bluesky/main","endStreamEnabled":true,"endStreamTemplate":"Thanks for hanging out at {{stream_title}} {{stream_url}}"}`,
+			ConfigJSON: `{"accountIdentifier":"streamer.main","credentialKey":"bluesky/main","endStreamEnabled":true,"endStreamTemplate":"Thanks for hanging out at {{stream_title}} {{stream_url}}"}`,
 		},
 		{
 			ID:         "discord-main",
@@ -606,7 +606,7 @@ func TestExecutionServiceEndStreamOptionallyPublishesConfiguredPosts(t *testing.
 			DestinationID:     "bluesky-main",
 			DestinationName:   "Main Bluesky",
 			Platform:          string(domain.PlatformBluesky),
-			AccountIdentifier: "don.main",
+			AccountIdentifier: "streamer.main",
 			CredentialKey:     "bluesky/main",
 			StreamURL:         "https://example.com/live",
 			StreamTitle:       "Going Live",
@@ -646,7 +646,7 @@ func TestExecutionServiceEndStreamUsesSelectedDestinationTargets(t *testing.T) {
 			Name:       "Main Bluesky",
 			Enabled:    true,
 			Template:   "{{stream_title}}",
-			ConfigJSON: `{"accountIdentifier":"don.main","credentialKey":"bluesky/main"}`,
+			ConfigJSON: `{"accountIdentifier":"streamer.main","credentialKey":"bluesky/main"}`,
 		},
 		{
 			ID:         "discord-main",
@@ -674,7 +674,7 @@ func TestExecutionServiceEndStreamUsesSelectedDestinationTargets(t *testing.T) {
 			DestinationID:     "bluesky-main",
 			DestinationName:   "Main Bluesky",
 			Platform:          string(domain.PlatformBluesky),
-			AccountIdentifier: "don.main",
+			AccountIdentifier: "streamer.main",
 			CredentialKey:     "bluesky/main",
 			StreamURL:         "https://example.com/live",
 			StreamTitle:       "Going Live",
@@ -712,7 +712,7 @@ func TestExecutionServiceEndStreamDoesNotClearWhenNoTrackedLiveNowSessionExists(
 			Name:       "Main Bluesky",
 			Enabled:    true,
 			Template:   "{{stream_title}}",
-			ConfigJSON: `{"accountIdentifier":"don.main","credentialKey":"bluesky/main"}`,
+			ConfigJSON: `{"accountIdentifier":"streamer.main","credentialKey":"bluesky/main"}`,
 		},
 	}
 	settingsRepo := &settingsRepositoryStub{item: domain.DefaultAppSettings()}

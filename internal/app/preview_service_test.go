@@ -72,7 +72,7 @@ func TestPreviewServiceGeneratesItemsForSelectedDestinations(t *testing.T) {
 				Platform:   domain.PlatformBluesky,
 				Name:       "Secondary Bluesky",
 				Template:   "{{stream_title}}",
-				ConfigJSON: `{"accountIdentifier":"don.test","credentialKey":"bluesky/main"}`,
+				ConfigJSON: `{"accountIdentifier":"streamer.test","credentialKey":"bluesky/main"}`,
 			},
 		},
 	}
@@ -115,7 +115,7 @@ func TestPreviewServiceCarriesValidationNotesIntoPreviewItems(t *testing.T) {
 				Platform:   domain.PlatformBluesky,
 				Name:       "Main Bluesky",
 				Template:   "{{message}}",
-				ConfigJSON: `{"accountIdentifier":"don.test","credentialKey":"bluesky/main"}`,
+				ConfigJSON: `{"accountIdentifier":"streamer.test","credentialKey":"bluesky/main"}`,
 			},
 		},
 	}
@@ -152,7 +152,7 @@ func TestPreviewServiceIncludesEnabledEndStreamMessages(t *testing.T) {
 				Platform:   domain.PlatformBluesky,
 				Name:       "Main Bluesky",
 				Template:   "{{stream_title}} {{stream_url}}",
-				ConfigJSON: `{"accountIdentifier":"don.test","credentialKey":"bluesky/main","endStreamEnabled":true,"endStreamTemplate":"Thanks for watching {{stream_title}}"}`,
+				ConfigJSON: `{"accountIdentifier":"streamer.test","credentialKey":"bluesky/main","endStreamEnabled":true,"endStreamTemplate":"Thanks for watching {{stream_title}}"}`,
 			},
 		},
 	}
@@ -232,7 +232,7 @@ func TestPreviewServiceGeneratesEndStreamItemsFromDestinationConfig(t *testing.T
 				Platform:   domain.PlatformBluesky,
 				Name:       "Main Bluesky",
 				Template:   "{{stream_title}}",
-				ConfigJSON: `{"accountIdentifier":"don.test","credentialKey":"bluesky/main","endStreamEnabled":true,"endStreamTemplate":"Thanks for watching {{stream_title}} {{stream_url}}"}`,
+				ConfigJSON: `{"accountIdentifier":"streamer.test","credentialKey":"bluesky/main","endStreamEnabled":true,"endStreamTemplate":"Thanks for watching {{stream_title}} {{stream_url}}"}`,
 			},
 			{
 				ID:         "discord-main",

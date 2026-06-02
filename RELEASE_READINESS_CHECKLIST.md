@@ -25,8 +25,9 @@ Ship StreamSignal in a way that is:
 - verify all core workflows manually on a release candidate build
 - verify the current UI is understandable to a first-time user without project context
 - verify the Home, Destinations, Settings, and Logs tabs follow a clear human workflow
-- remove or hide the temporary Execution Results section before MVP release; it is for workflow validation, not end users
-- remove or hide the temporary Logs tab before MVP release; it is for validation/support diagnostics, not normal end-user use
+- confirm the production/release frontend build hides the debug-only Execution Results section
+- confirm the production/release frontend build hides the debug-only Logs tab
+- use the debug frontend build when workflow validation needs Execution Results and Logs
 - confirm Preview stays network-free
 - confirm Preview shows Go Live messages plus enabled destination-level End Stream messages in one pass
 - confirm Go Live publishes correctly to Discord, Bluesky, and Mastodon

@@ -61,18 +61,10 @@ describe('streamsignal api wrappers', () => {
             updatedAt: '',
         };
         const settings = {
-            testModeEnabled: false,
-            testDiscordWebhookKey: '',
-            testBlueskyAccountIdentifier: '',
-            testBlueskyCredentialKey: '',
-            testMastodonCredentialKey: '',
-            testMastodonInstanceURL: '',
             defaultStreamURL: '',
             defaultHashtags: '',
             duplicateProtectionEnabled: true,
             duplicateWindowMinutes: 10,
-            endStreamPostEnabled: false,
-            endStreamTemplate: '',
         };
 
         vi.mocked(bindings.GetLogs).mockResolvedValue([] as never);
