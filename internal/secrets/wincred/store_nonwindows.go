@@ -35,7 +35,7 @@ func (s *Store) Get(ctx context.Context, key string) (string, error) {
 		return "", fmt.Errorf("read macOS keychain credential %q: %w", key, err)
 	}
 
-	return strings.TrimSpace(string(out)), nil
+	return strings.TrimRight(string(out), "\n"), nil
 }
 
 func (s *Store) Put(ctx context.Context, key string, value string) error {

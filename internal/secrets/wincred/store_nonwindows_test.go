@@ -83,3 +83,32 @@ func TestMacKeychainStore(t *testing.T) {
 		t.Errorf("expected second delete to be a no-op, got error: %v", err)
 	}
 }
+
+func TestMacKeychainStore_PreservesWhitespace(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("Skipping macOS Keychain test on non-darwin OS")
+	}
+
+	store := NewStore()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	key := fmt.Sprintf("streamsignal/test/ws/%d", time.Now().UnixNano())
+	defer store.Delete(ctx, key)
+
+	// Value with leading and trailing spaces that must be preserved.
+	value := " token-with-spaces "
+
+	err := store.Put(ctx, key, value)
+	if err != nil {
+		t.Fatalf("failed to store secret with whitespace: %v", err)
+	}
+
+	got, err := store.Get(ctx, key)
+	if err != nil {
+		t.Fatalf("failed to get secret with whitespace: %v", err)
+	}
+	if got != value {
+		t.Errorf("whitespace not preserved: expected %q, got %q", value, got)
+	}
+}
